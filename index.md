@@ -357,7 +357,7 @@ Possible QC failure can come from these cases: white foam buildup on the edge of
 
 #### Optotagging protocol
 
-At the end of every experiment, an optotagging protocol is run during which the cortical surface is stimulated with blue light. In Sst-IRES-Cre/wt;Ai32(RCL-ChR2(H134R)\_EYFP)/wt mice, this protocol allowes us to identify putative Sst+ cortical interneurons by an increase in spiking activity time-locked to laser stimulation (and consequent ChR2 activation). Blue light is delivered by a 473 nm laser (Laser Quantum, model Ciel or Cobolt model 06-MLD). The light source is coupled to a 400 μm diameter fiber optic cable (Thorlabs) or bifurcated fiber bundle (Thorlabs, BFYL4LF01), with the tip(s) positioned such that blue light illuminates the entire cranial window. Two types of stimuli at 3 different light levels are randomly interleaved: a 10 ms pulse, and a 1s raised cosine ramp. For the pulse stimulus, a 0.5 ms ramp is applied at the beginning and end of the pulse. Stimuli are presented at intervals of 1.5 s plus a uniformly distributed delay between 0 and 0.5 s.
+At the end of every experiment, an optotagging protocol is run during which the cortical surface is stimulated with blue light. In Sst-IRES-Cre/wt;Ai32(RCL-ChR2(H134R)\_EYFP)/wt mice, this protocol allowes us to identify putative Sst+ cortical interneurons by an increase in spiking activity time-locked to laser stimulation (and consequent ChR2 activation). Blue light is delivered by a 473 nm laser (Laser Quantum, model Ciel or Cobolt model 06-MLD). The light source is coupled to a 400 μm diameter fiber optic cable (Thorlabs) or bifurcated fiber bundle (Thorlabs, BFYL4LF01), with the tip(s) positioned such that blue light illuminates the entire cranial window. Two types of stimuli at 3 different light levels are randomly interleaved: a 10 ms pulse, and a 1s raised cosine ramp. For the pulse stimulus, a 0.5 ms ramp is applied at the beginning and end of the pulse. Stimuli are presented at intervals of 1.5 s plus a uniformly distributed delay between 0 and 0.5 s. Representative laser-aligned responses and session-level yield summaries are shown in [Supplementary Figure 5](#fig-supp-optotagging-heatmaps).
 
 #### Clearing with life canvas
 
@@ -554,6 +554,16 @@ Rather than using the photodiode to reconstruct per-frame timing, the mesoscope 
 
 Once delay-corrected frame times are established, the mapping from stimulus sweeps to seconds proceeds identically to the ephys case: display sequences are converted to global frame indices, local sweep frames are remapped into the global domain, and frame indices are converted to seconds by lookup in the frame time array. The mesoscope pipeline produces two output tables. The primary table uses the delay-corrected frame times and is appropriate for analyses correlating neural calcium signals with stimulus events, since both the imaging and the stimulus share the same monitor display latency. The secondary table uses raw vsync times without the delay correction, which is useful for analyses tied to hardware trigger signals. Both tables have the same columnar structure: one row per sweep, with start time, stop time, frame indices, stimulus name, and stimulus parameters.
 
+#### SLAP2 synchronization
+
+SLAP2 imaging, visual-stimulus, running-wheel, and camera timing were synchronized using signals recorded by the HARP Behavior device. The synchronization and packaging implementation is contained in the [SLAP2 NWB packaging capsule](https://codeocean.allenneuraldynamics.org/capsule/11f8d942-a12c-44b5-84db-d084164294d1/tree) and its source repository ([AllenNeuralDynamics/slap2_packaging_nwb](https://github.com/AllenNeuralDynamics/slap2_packaging_nwb)). HARP records the analog photodiode and wheel-encoder channels, the primary-plane SLAP2 cycle-clock digital input, SLAP2 trial-start and trial-end pulses, and grating-presentation pulses. All of these timestamps are placed on a common session time base by subtracting the timestamp of the first SLAP2 start pulse.
+
+Stimulus parameters and durations are read from the stimulus-control orientation table and paired in order with the HARP grating-presentation pulse times. A discrepancy of at most three records is treated as an acquisition-boundary mismatch and resolved by removing unmatched leading records from the longer sequence; larger discrepancies cause packaging to fail. Each presentation start time is taken from its normalized HARP pulse, its stop time is calculated from the programmed duration, and the presentation is associated with the SLAP2 trial whose start and end pulses contain it. Presentations are then separated by stimulus block type and stored as NWB `TimeIntervals` tables with the synchronized start and stop times, trial index, and stimulus parameters.
+
+Fluorescence samples are synchronized at finer resolution using the primary-plane cycle clock and the scan-line index associated with every extracted sample. Rising edges of the HARP cycle-clock signal define the start of each DMD1 imaging cycle; falling edges are not used because they do not reliably mark cycle ends. For trial-based sessions, the cycle stream is divided at inter-cycle gaps greater than five times the median cycle period. The number of cycles assigned to each trial is checked against the cycle count read from the SLAP2 `.dat` file, with a scan-line-based estimate used when that count is unavailable. Continuous sessions, and trial-based sessions for which gap detection does not yield the expected number of trials, use sequential cycle assignment based on the recorded cycle counts or scan-line totals. An extra leading HARP cycle group is removed only when the processed experiment summary, HARP gaps, and available `.dat` trial numbers jointly identify it as unmatched acquisition data.
+
+Within each trial, an effective lines-per-cycle value is calculated from the maximum recorded scan-line index and the number of detected HARP cycles. Samples are assigned to cycles from their scan-line indices and linearly interpolated between consecutive cycle-start timestamps; the final cycle end is estimated from the mean measured cycle period. If the sample-derived and HARP-derived cycle counts disagree, timestamps are interpolated across the complete trial as a fallback. Because both DMDs share the same physical scanner but only DMD1 supplies the HARP cycle clock, the DMD1 alignment also produces scan-line-to-time control points at each cycle boundary. DMD2 sample times are obtained by interpolating its independently recorded scan-line indices against those control points. The pipeline verifies expected sample counts and strictly increasing timestamps and writes diagnostic plots of cycle periods, trial assignments, line-index corrections, and residual timing behavior.
+
 #### Mesoscope 2-Photon Imaging NWB Packaging Pipeline
 
 All processed data were packaged into Neurodata Without Borders (NWB) format [@rubel2022nwb]. NWB packaging was performed as an integrated step of the 2-Photon processing pipeline (mentioned above) which produced NWBs in the Zarr format containing the processed 2-Photon data.
@@ -594,6 +604,26 @@ A secondary pipeline, also run on the CodeOcean platform, took the output spike 
 
 - The NWBs were then uploaded to their dandiset using the DANDI command line interface ([https://github.com/dandi/dandi-cli](https://github.com/dandi/dandi-cli))
 
+#### SLAP2 NWB Packaging Pipeline
+
+SLAP2 data were packaged by a [Code Ocean pipeline](https://codeocean.allenneuraldynamics.org/pipelines/f8d26d18-3daf-45fd-9671-32b68d2a9441) whose principal synchronization and NWB assembly step is the [SLAP2 NWB packaging capsule](https://codeocean.allenneuraldynamics.org/capsule/11f8d942-a12c-44b5-84db-d084164294d1/tree). The capsule combines the raw SLAP2 session, the processed experiment-summary output from the motion-correction and source-extraction workflow, HARP data, stimulus tables, and the eye-tracking output described above. It can create a metadata-populated base NWB with `aind-nwb-utils` or append to a supplied NWB in HDF5 or Zarr form. The resulting file contains the synchronized neural, stimulus, locomotion, and eye-tracking data for one session.
+
+The packaging procedure includes the following steps:
+
+- Reading `instrument.json` and `acquisition.json` to register the SLAP2 microscope, optical channels, excitation and emission wavelengths, indicators, targeted structures, acquisition rates, and one NWB `ImagingPlane` for each DMD imaging path.
+
+- Applying the SLAP2-HARP alignment described above to the processed fluorescence arrays from both DMDs. Candidate raw acquisitions are reconciled with the processed trial count across both planes so that the same acquisition and any excluded leading trials are used consistently.
+
+- Creating an `ImageSegmentation` interface with one `PlaneSegmentation` per DMD. Three-dimensional source profiles are maximum-projected along z and stored as weighted NWB pixel masks, with additional columns retaining the minimum and maximum active z indices for each source.
+
+- Packaging the synchronized baseline fluorescence (`F0`) and calculated dF/F traces for each available green or red channel as `RoiResponseSeries` objects linked to the corresponding ROI table. Registered, motion-corrected mean images for each channel and the source-extraction activity image are stored as `ImageSeries` objects in the `ophys` processing module.
+
+- Converting the synchronized stimulus records into separate `TimeIntervals` tables by block type. HARP wheel-encoder samples are retained as raw signed counter values and are also unwrapped and converted to wheel rotation and linear running speed in the `running` processing module. The common eye-tracking procedure described above is joined to authoritative per-frame HARP camera timestamps by video frame number and added to the same NWB file.
+
+- Generating synchronization, running, eye-tracking, receptive-field, and stimulus-tuning quality-control outputs. The capsule also writes structured processing provenance that records the stimulus-table conversion, SLAP2-HARP synchronization, and ophys NWB packaging steps and their dependencies.
+
+Completed SLAP2 NWB files were deposited in [DANDI:001424](https://dandiarchive.org/dandiset/001424) alongside the Neuropixels and mesoscope releases.
+
 ::::
 
 # Data records
@@ -609,308 +639,27 @@ Animal and session coverage, recording context, and quality-control status are s
 :placeholder: ./images/figures/generated/session-inventory.svg
 
 Recording-session inventory and quality-control summary across modalities. The
-**Interactive** view provides searchable, filterable tables for 39 mice and 164
-manuscript session records, with expandable animal metadata and CSV export. The
+**Interactive** view provides searchable, filterable tables sourced from local
+CSV snapshots, with expandable animal metadata and CSV export. The Sessions
+table includes records with a valid session ID whose QC status is `Pass`. The
 **Static** view summarizes the complete worksheet inputs used by the supplied
-modality plots. **A,** Neuropixels uses 62 worksheet rows to populate four
-canonical context slots for each of 16 mice; red hatching denotes a missing or
-failed session, and a star denotes one failed probe. **B,** Mesoscope shows all
-92 chronological worksheet rows from 10 mice; red hatching denotes a failed
-session. **C,** SLAP2 shows the 28 P3 worksheet rows from 8 mice; colored borders
-and hatching denote partially failed motion correction, stress, sleep, or an
-acquisition that stopped halfway. Across panels, indigo, teal, brown, and gold
+modality plots. Failed sessions are unfilled with borders colored by session
+type; numbered markers identify descriptive QC tags listed in the legend. Across panels,
+indigo, teal, brown, and gold
 denote sensorimotor, standard oddball, sequence, and duration sessions,
 respectively. Mice are ordered by cohort; where both are present, whitespace
 separates the motor-first and sequence-first groups defined in [Figure 1C](#fig-graphical-abstract).
-Repeated and aborted worksheet rows are retained in the Static view, so its rows
-do not map one-to-one to the 164-record Interactive inventory.
+Repeated and aborted worksheet rows are retained in the Static view and excluded from the pass-QC Interactive Sessions table.
 :::
-
-<div class="publication-data-source" hidden aria-hidden="true">
-
-<table class="publication-data-table table-animals" data-table-kind="animals">
-  <colgroup>
-    <col style="width: 17%" />
-    <col style="width: 9%" />
-    <col style="width: 13%" />
-    <col style="width: 19%" />
-    <col style="width: 14%" />
-    <col style="width: 25%" />
-  </colgroup>
-  <thead>
-    <tr>
-      <th colspan="6" style="text-align: center;">
-        <p>
-          <strong>Table 1 -</strong> List of experimental animals per modality</p>
-        <p>
-          <a href="https://docs.google.com/spreadsheets/d/1wAeloFJgvRjrseoVeNm4YQd8BezGWRon-Z-b1iJAz9c/edit?gid=520414570#gid=520414570">
-            <u>Predictive processing experiment tables</u>
-          </a>
-        </p>
-      </th>
-    </tr>
-    <tr>
-      <th style="text-align: center;">Recording modality</th>
-      <th style="text-align: center;">Rig(s)</th>
-      <th style="text-align: center;">Mouse line / preparation</th>
-      <th style="text-align: center;">Virus / indicator</th>
-      <th style="text-align: center;">Mice (M/F)</th>
-      <th style="text-align: center;">Mouse IDs</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr class="modality-mesoscope" data-modality="mesoscope">
-      <td style="text-align: left;">Two-photon mesoscope (calcium)</td>
-      <td style="text-align: left;">MESO1, MESO2</td>
-      <td style="text-align: left;">Snap25-IRES2-Cre;Oi4(jGCaMP8s)</td>
-      <td style="text-align: left;">Transgenic pan-neuronal jGCaMP8s (calcium); no virus</td>
-      <td style="text-align: left;">10 (8M / 2F)</td>
-      <td style="text-align: left;" data-full-value="832700, 837568, 839909, 842971, 843000, 843001, 845342, 846289, 850399, 853137">
-        <details class="id-disclosure">
-          <summary>10 mouse IDs</summary>
-          <div class="id-list">832700, 837568, 839909, 842971, 843000, 843001, 845342, 846289, 850399, 853137</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-neuropixels" data-modality="neuropixels">
-      <td style="text-align: left;">Neuropixels (electrophysiology)</td>
-      <td style="text-align: left;">NP1</td>
-      <td style="text-align: left;">Sst-IRES-Cre;Ai32(ChR2-EYFP)</td>
-      <td style="text-align: left;">Transgenic ChR2-EYFP in SST+ interneurons for opto-tagging; no virus</td>
-      <td style="text-align: left;">16 (8M / 8F)</td>
-      <td style="text-align: left;" data-full-value="820454, 820459, 830794, 830795, 830846, 830847, 830848, 830849, 830851, 830852, 832691, 834686, 834687, 834691, 848387, 848390">
-        <details class="id-disclosure">
-          <summary>16 mouse IDs</summary>
-          <div class="id-list">820454, 820459, 830794, 830795, 830846, 830847, 830848, 830849, 830851, 830852, 832691, 834686, 834687, 834691, 848387, 848390</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2">
-      <td style="text-align: left;">SLAP2 dendritic imaging (glutamate + calcium)</td>
-      <td style="text-align: left;">SLAP2</td>
-      <td style="text-align: left;">C57BL/6J (wt) + AAV, sparse CaMKII-Cre</td>
-      <td style="text-align: left;">AAV: iGluSnFR4f (glutamate) + RCaMP3 or jRGECO1a (calcium)</td>
-      <td style="text-align: left;">8 (6M / 2F)</td>
-      <td style="text-align: left;" data-full-value="776270, 794237, 796630, 801381, 803496, 828408, 828409, 829704">
-        <details class="id-disclosure">
-          <summary>8 mouse IDs</summary>
-          <div class="id-list">776270, 794237, 796630, 801381, 803496, 828408, 828409, 829704</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2">
-      <td style="text-align: left;">SLAP2 dendritic imaging (voltage)</td>
-      <td style="text-align: left;">SLAP2</td>
-      <td style="text-align: left;">C57BL/6J (wt) + AAV, sparse CaMKII-Cre</td>
-      <td style="text-align: left;">AAV: ASAP7 (voltage) + HaloTag</td>
-      <td style="text-align: left;">4 (4M / 0F)</td>
-      <td style="text-align: left;" data-full-value="841191, 845207, 851452, 851453">
-        <details class="id-disclosure">
-          <summary>4 mouse IDs</summary>
-          <div class="id-list">841191, 845207, 851452, 851453</div>
-        </details>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-<table class="publication-data-table table-sessions" data-table-kind="sessions">
-  <colgroup>
-    <col style="width: 16%" />
-    <col style="width: 12%" />
-    <col style="width: 9%" />
-    <col style="width: 7%" />
-    <col style="width: 54%" />
-  </colgroup>
-  <thead>
-    <tr>
-      <th colspan="5" style="text-align: center;">
-        <p>
-          <strong>Table 2 -</strong> List of sessions</p>
-        <p>
-          <a href="https://docs.google.com/spreadsheets/d/1wAeloFJgvRjrseoVeNm4YQd8BezGWRon-Z-b1iJAz9c/edit?usp=sharing">
-            <u>Predictive processing experiment tables</u>
-          </a>
-        </p>
-      </th>
-    </tr>
-    <tr>
-      <th style="text-align: center;">Recording modality</th>
-      <th style="text-align: center;">Context</th>
-      <th style="text-align: center;">N sessions</th>
-      <th style="text-align: center;">N mice</th>
-      <th style="text-align: center;">Session IDs</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr class="modality-mesoscope" data-modality="mesoscope" data-context="standard oddball">
-      <td style="text-align: left;">Two-photon mesoscope</td>
-      <td style="text-align: left;">Standard oddball</td>
-      <td style="text-align: left;">18</td>
-      <td style="text-align: left;">7</td>
-      <td style="text-align: left;" data-full-value="832700_2026-01-30, 832700_2026-01-31, 837568_2026-02-20, 837568_2026-02-23, 837568_2026-03-05, 837568_2026-03-06, 839909_2026-02-27, 839909_2026-03-05, 843000_2026-03-17, 843000_2026-03-18, 843001_2026-03-19, 843001_2026-03-21, 843001_2026-03-25, 843001_2026-04-11, 845342_2026-03-27, 845342_2026-03-30, 846289_2026-04-15, 846289_2026-04-16">
-        <details class="id-disclosure">
-          <summary>18 sessions</summary>
-          <div class="id-list">832700_2026-01-30, 832700_2026-01-31, 837568_2026-02-20, 837568_2026-02-23, 837568_2026-03-05, 837568_2026-03-06, 839909_2026-02-27, 839909_2026-03-05, 843000_2026-03-17, 843000_2026-03-18, 843001_2026-03-19, 843001_2026-03-21, 843001_2026-03-25, 843001_2026-04-11, 845342_2026-03-27, 845342_2026-03-30, 846289_2026-04-15, 846289_2026-04-16</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-mesoscope" data-modality="mesoscope" data-context="sensorimotor">
-      <td style="text-align: left;">Two-photon mesoscope</td>
-      <td style="text-align: left;">Sensorimotor</td>
-      <td style="text-align: left;">17</td>
-      <td style="text-align: left;">7</td>
-      <td style="text-align: left;" data-full-value="832700_2026-01-24, 832700_2026-01-29, 837568_2026-02-24, 837568_2026-02-26, 837568_2026-03-09, 839909_2026-02-20, 839909_2026-02-26, 843000_2026-03-19, 843000_2026-03-20, 843001_2026-03-11, 843001_2026-03-12, 843001_2026-03-18, 843001_2026-04-16, 845342_2026-03-25, 845342_2026-03-26, 846289_2026-04-10, 846289_2026-04-13">
-        <details class="id-disclosure">
-          <summary>17 sessions</summary>
-          <div class="id-list">832700_2026-01-24, 832700_2026-01-29, 837568_2026-02-24, 837568_2026-02-26, 837568_2026-03-09, 839909_2026-02-20, 839909_2026-02-26, 843000_2026-03-19, 843000_2026-03-20, 843001_2026-03-11, 843001_2026-03-12, 843001_2026-03-18, 843001_2026-04-16, 845342_2026-03-25, 845342_2026-03-26, 846289_2026-04-10, 846289_2026-04-13</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-mesoscope" data-modality="mesoscope" data-context="sequence">
-      <td style="text-align: left;">Two-photon mesoscope</td>
-      <td style="text-align: left;">Sequence</td>
-      <td style="text-align: left;">16</td>
-      <td style="text-align: left;">8</td>
-      <td style="text-align: left;" data-full-value="832700_2026-02-06, 832700_2026-02-07, 837568_2026-02-13, 837568_2026-02-16, 839909_2026-03-06, 839909_2026-03-19, 842971_2026-04-18, 842971_2026-04-22, 843000_2026-03-03, 843000_2026-03-04, 843001_2026-04-01, 843001_2026-04-02, 845342_2026-03-31, 845342_2026-04-01, 846289_2026-04-20, 846289_2026-04-21">
-        <details class="id-disclosure">
-          <summary>16 sessions</summary>
-          <div class="id-list">832700_2026-02-06, 832700_2026-02-07, 837568_2026-02-13, 837568_2026-02-16, 839909_2026-03-06, 839909_2026-03-19, 842971_2026-04-18, 842971_2026-04-22, 843000_2026-03-03, 843000_2026-03-04, 843001_2026-04-01, 843001_2026-04-02, 845342_2026-03-31, 845342_2026-04-01, 846289_2026-04-20, 846289_2026-04-21</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-mesoscope" data-modality="mesoscope" data-context="duration">
-      <td style="text-align: left;">Two-photon mesoscope</td>
-      <td style="text-align: left;">Duration</td>
-      <td style="text-align: left;">16</td>
-      <td style="text-align: left;">8</td>
-      <td style="text-align: left;" data-full-value="832700_2026-02-12, 832700_2026-02-13, 837568_2026-02-17, 837568_2026-02-19, 839909_2026-03-20, 839909_2026-04-22, 842971_2026-04-23, 842971_2026-04-24, 843000_2026-03-10, 843000_2026-03-11, 843001_2026-04-03, 843001_2026-04-09, 845342_2026-04-02, 845342_2026-04-03, 846289_2026-04-23, 846289_2026-04-27">
-        <details class="id-disclosure">
-          <summary>16 sessions</summary>
-          <div class="id-list">832700_2026-02-12, 832700_2026-02-13, 837568_2026-02-17, 837568_2026-02-19, 839909_2026-03-20, 839909_2026-04-22, 842971_2026-04-23, 842971_2026-04-24, 843000_2026-03-10, 843000_2026-03-11, 843001_2026-04-03, 843001_2026-04-09, 845342_2026-04-02, 845342_2026-04-03, 846289_2026-04-23, 846289_2026-04-27</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-neuropixels" data-modality="neuropixels" data-context="standard oddball">
-      <td style="text-align: left;">Neuropixels</td>
-      <td style="text-align: left;">Standard oddball</td>
-      <td style="text-align: left;">14</td>
-      <td style="text-align: left;">14</td>
-      <td style="text-align: left;" data-full-value="820454_2025-11-05, 830794_2026-01-27, 830795_2026-02-24, 830846_2026-03-11, 830847_2026-03-11, 830848_2026-03-04, 830849_2026-03-06, 830851_2026-03-17, 830852_2026-02-24, 834686_2026-03-25, 834687_2026-03-18, 834691_2026-02-17, 848387_2026-05-05, 848390_2026-05-05">
-        <details class="id-disclosure">
-          <summary>14 sessions</summary>
-          <div class="id-list">820454_2025-11-05, 830794_2026-01-27, 830795_2026-02-24, 830846_2026-03-11, 830847_2026-03-11, 830848_2026-03-04, 830849_2026-03-06, 830851_2026-03-17, 830852_2026-02-24, 834686_2026-03-25, 834687_2026-03-18, 834691_2026-02-17, 848387_2026-05-05, 848390_2026-05-05</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-neuropixels" data-modality="neuropixels" data-context="sensorimotor">
-      <td style="text-align: left;">Neuropixels</td>
-      <td style="text-align: left;">Sensorimotor</td>
-      <td style="text-align: left;">16</td>
-      <td style="text-align: left;">16</td>
-      <td style="text-align: left;" data-full-value="820454_2025-11-04, 820459_2025-11-10, 830794_2026-01-26, 830795_2026-02-23, 830846_2026-03-12, 830847_2026-03-12, 830848_2026-03-05, 830849_2026-03-07, 830851_2026-03-16, 830852_2026-02-23, 832691_2026-03-26, 834686_2026-03-26, 834687_2026-03-19, 834691_2026-02-16, 848387_2026-05-04, 848390_2026-05-04">
-        <details class="id-disclosure">
-          <summary>16 sessions</summary>
-          <div class="id-list">820454_2025-11-04, 820459_2025-11-10, 830794_2026-01-26, 830795_2026-02-23, 830846_2026-03-12, 830847_2026-03-12, 830848_2026-03-05, 830849_2026-03-07, 830851_2026-03-16, 830852_2026-02-23, 832691_2026-03-26, 834686_2026-03-26, 834687_2026-03-19, 834691_2026-02-16, 848387_2026-05-04, 848390_2026-05-04</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-neuropixels" data-modality="neuropixels" data-context="sequence">
-      <td style="text-align: left;">Neuropixels</td>
-      <td style="text-align: left;">Sequence</td>
-      <td style="text-align: left;">15</td>
-      <td style="text-align: left;">15</td>
-      <td style="text-align: left;" data-full-value="820454_2025-11-06, 820459_2025-11-12, 830794_2026-01-28, 830795_2026-02-25, 830846_2026-03-09, 830847_2026-03-09, 830848_2026-03-02, 830849_2026-03-04, 830851_2026-03-18, 830852_2026-02-25, 832691_2026-03-23, 834686_2026-03-23, 834687_2026-03-16, 848387_2026-05-06, 848390_2026-05-06">
-        <details class="id-disclosure">
-          <summary>15 sessions</summary>
-          <div class="id-list">820454_2025-11-06, 820459_2025-11-12, 830794_2026-01-28, 830795_2026-02-25, 830846_2026-03-09, 830847_2026-03-09, 830848_2026-03-02, 830849_2026-03-04, 830851_2026-03-18, 830852_2026-02-25, 832691_2026-03-23, 834686_2026-03-23, 834687_2026-03-16, 848387_2026-05-06, 848390_2026-05-06</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-neuropixels" data-modality="neuropixels" data-context="duration">
-      <td style="text-align: left;">Neuropixels</td>
-      <td style="text-align: left;">Duration</td>
-      <td style="text-align: left;">14</td>
-      <td style="text-align: left;">14</td>
-      <td style="text-align: left;" data-full-value="820454_2025-11-07, 830794_2026-01-29, 830795_2026-02-26, 830846_2026-03-10, 830847_2026-03-10, 830848_2026-03-03, 830849_2026-03-05, 830851_2026-03-19, 830852_2026-02-26, 832691_2026-03-24, 834686_2026-03-24, 834687_2026-03-17, 848387_2026-05-07, 848390_2026-05-07">
-        <details class="id-disclosure">
-          <summary>14 sessions</summary>
-          <div class="id-list">820454_2025-11-07, 830794_2026-01-29, 830795_2026-02-26, 830846_2026-03-10, 830847_2026-03-10, 830848_2026-03-03, 830849_2026-03-05, 830851_2026-03-19, 830852_2026-02-26, 832691_2026-03-24, 834686_2026-03-24, 834687_2026-03-17, 848387_2026-05-07, 848390_2026-05-07</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2" data-context="standard oddball">
-      <td style="text-align: left;">SLAP2 dendritic imaging (glutamate + calcium)</td>
-      <td style="text-align: left;">Standard oddball</td>
-      <td style="text-align: left;">16</td>
-      <td style="text-align: left;">8</td>
-      <td style="text-align: left;" data-full-value="776270_2025-07-02, 794237_2025-04-03, 794237_2025-04-24, 794237_2025-05-08, 796630_2025-08-25, 796630_2025-08-28, 796630_2025-09-26, 796630_2025-10-01, 801381_2025-05-29, 801381_2025-06-05, 801381_2025-09-26, 801381_2025-10-02, 803496_2025-07-02, 828408_2025-11-18, 828409_2025-11-19, 829704_2025-12-11">
-        <details class="id-disclosure">
-          <summary>16 sessions</summary>
-          <div class="id-list">776270_2025-07-02, 794237_2025-04-03, 794237_2025-04-24, 794237_2025-05-08, 796630_2025-08-25, 796630_2025-08-28, 796630_2025-09-26, 796630_2025-10-01, 801381_2025-05-29, 801381_2025-06-05, 801381_2025-09-26, 801381_2025-10-02, 803496_2025-07-02, 828408_2025-11-18, 828409_2025-11-19, 829704_2025-12-11</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2" data-context="sensorimotor">
-      <td style="text-align: left;">SLAP2 dendritic imaging (glutamate + calcium)</td>
-      <td style="text-align: left;">Sensorimotor</td>
-      <td style="text-align: left;">3</td>
-      <td style="text-align: left;">3</td>
-      <td style="text-align: left;" data-full-value="828408_2025-11-13, 828409_2025-11-11, 829704_2025-12-10">
-        <details class="id-disclosure">
-          <summary>3 sessions</summary>
-          <div class="id-list">828408_2025-11-13, 828409_2025-11-11, 829704_2025-12-10</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2" data-context="sequence">
-      <td style="text-align: left;">SLAP2 dendritic imaging (glutamate + calcium)</td>
-      <td style="text-align: left;">Sequence</td>
-      <td style="text-align: left;">3</td>
-      <td style="text-align: left;">3</td>
-      <td style="text-align: left;" data-full-value="828408_2025-11-19, 828409_2025-11-20, 829704_2025-12-16">
-        <details class="id-disclosure">
-          <summary>3 sessions</summary>
-          <div class="id-list">828408_2025-11-19, 828409_2025-11-20, 829704_2025-12-16</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2" data-context="duration">
-      <td style="text-align: left;">SLAP2 dendritic imaging (glutamate + calcium)</td>
-      <td style="text-align: left;">Duration</td>
-      <td style="text-align: left;">3</td>
-      <td style="text-align: left;">3</td>
-      <td style="text-align: left;" data-full-value="828408_2025-11-20, 828409_2025-11-21, 829704_2025-12-18">
-        <details class="id-disclosure">
-          <summary>3 sessions</summary>
-          <div class="id-list">828408_2025-11-20, 828409_2025-11-21, 829704_2025-12-18</div>
-        </details>
-      </td>
-    </tr>
-    <tr class="modality-slap2" data-modality="slap2" data-context="other/pilot">
-      <td style="text-align: left;">SLAP2 dendritic imaging (voltage)</td>
-      <td style="text-align: left;">Other/pilot</td>
-      <td style="text-align: left;">13</td>
-      <td style="text-align: left;">4</td>
-      <td style="text-align: left;" data-full-value="841191_2026-05-07, 841191_2026-05-08, 841191_2026-05-12, 841191_2026-05-13, 845207_2026-02-27, 845207_2026-04-06, 845207_2026-04-09, 845207_2026-05-08, 845207_2026-05-13, 851452_2026-05-05, 851453_2026-06-04, 851453_2026-06-10, 851453_2026-06-11">
-        <details class="id-disclosure">
-          <summary>13 sessions</summary>
-          <div class="id-list">841191_2026-05-07, 841191_2026-05-08, 841191_2026-05-12, 841191_2026-05-13, 845207_2026-02-27, 845207_2026-04-06, 845207_2026-04-09, 845207_2026-05-08, 845207_2026-05-13, 851452_2026-05-05, 851453_2026-06-04, 851453_2026-06-10, 851453_2026-06-11</div>
-        </details>
-      </td>
-    </tr>
-  </tbody>
-</table>
-
-</div>
-
 ## NWB file contents
 
-All data from this project are packaged as Neurodata Without Borders (NWB)
-files and deposited on the DANDI Archive. Neuropixels electrophysiology
-sessions are available at [DANDI:001637](https://dandiarchive.org/dandiset/001637),
-and mesoscope two-photon imaging sessions at
-[DANDI:001768](https://dandiarchive.org/dandiset/001768). Use the tabs below as
+All data from this project are packaged as Neurodata
+Without Borders (NWB) files and deposited on the DANDI Archive. Neuropixels
+electrophysiology sessions are available at
+[DANDI:001637](https://dandiarchive.org/dandiset/001637), mesoscope two-photon
+imaging sessions at [DANDI:001768](https://dandiarchive.org/dandiset/001768),
+and SLAP2 dendritic-imaging sessions at
+[DANDI:001424](https://dandiarchive.org/dandiset/001424). Use the tabs below as
 a map from a scientific question to the corresponding NWB object and PyNWB
 entry point. Object names can differ slightly among sessions; the paths shown
 here reflect representative files in these Dandisets.
@@ -961,6 +710,20 @@ summary images remain connected.
 | What does the field of view look like? | Each plane's `images` interface contains average projection, maximum projection, and segmentation-mask summary images. | `nwbfile.processing[plane]["images"]` |
 
 :::
+:::{tab-item} SLAP2
+
+**SLAP2 NWB files ([DANDI:001424](https://dandiarchive.org/dandiset/001424)):**
+connect source masks, mean and activity images, and fluorescence traces within
+each DMD imaging path.
+
+| Question | NWB contents | Representative PyNWB entry point |
+| --- | --- | --- |
+| Where and how was each DMD path imaged? | `/general/optophysiology` describes the DMD1 and DMD2 imaging planes, optical channels, device, indicator, and field geometry. | `nwbfile.imaging_planes`, `nwbfile.devices` |
+| Which pixels belong to each extracted source? | `/processing/ophys/ImageSegmentation/PlaneSegmentation_DMD*` stores one weighted `pixel_mask` per source. | `nwbfile.processing["ophys"]["ImageSegmentation"]` |
+| What source and structural images are available? | `/processing/ophys/DMD*_mean_image_channel*` stores mean channel images, and `DMD*_activity_image` stores the source-localization activity projection. | `nwbfile.processing["ophys"]["DMD1_activity_image"]` |
+| How does each source change over time? | `/processing/ophys/Fluorescence_DMD*/DMD*_dFF` stores source ΔF/F with timestamps; the corresponding `DMD*_F0` series stores baseline fluorescence. | `nwbfile.processing["ophys"]["Fluorescence_DMD1"]["DMD1_dFF"]` |
+
+:::
 ::::
 
 NWB files can be streamed directly from DANDI without downloading the complete
@@ -1004,8 +767,9 @@ structure or cortical layer. The displayed AP samples are not median-corrected,
 so common-mode fluctuations across contacts remain visible as vertical stripes.
 Mesoscope views are unprocessed 512 × 512 ScanImage channel frames. SLAP2 views
 map native sparse detector samples onto acquisition-plan superpixels, reduce the
-1280 × 800 acquisition-coordinate raster by 2×, and encode the resulting
-640 × 400 lossless WebP frames. A dim structural reference is used only outside
+stored 1280 × 800 acquisition-coordinate raster by 2×, transpose it for
+publication display, and encode the resulting 400 × 640 lossless WebP frames,
+with the fast-scanning x axis vertical. A dim structural reference is used only outside
 sampled dendritic pixels. Microscopy
 playback uses elapsed time within each four-second excerpt. Selectors report CCF
 structures and layers for each probe; area, layer, and depth for each mesoscope
@@ -1015,17 +779,59 @@ and contrast-scaled independently for display. Source sessions are Neuropixels
 [ecephys_830846_2026-03-09_10-32-54](https://open.quiltdata.com/b/aind-open-data/tree/ecephys_830846_2026-03-09_10-32-54/) ([DANDI:001637](https://dandiarchive.org/dandiset/001637/draft/files));
 mesoscope [multiplane-ophys_832700_2026-01-29_11-18-09](https://open.quiltdata.com/b/aind-open-data/tree/multiplane-ophys_832700_2026-01-29_11-18-09/) ([DANDI:001768](https://dandiarchive.org/dandiset/001768/draft/files));
 and SLAP2
-[796630_2025-08-28_14-25-34](https://open.quiltdata.com/b/aind-open-data/tree/796630_2025-08-28_14-25-34/).
+[796630_2025-08-28_14-25-34](https://open.quiltdata.com/b/aind-open-data/tree/796630_2025-08-28_14-25-34/) ([DANDI:001424](https://dandiarchive.org/dandiset/001424/draft/files)).
 :::
 
 ## Units extraction
 
-:::{warning} Work in progress
-:class: manuscript-wip
-[Figure 6](#fig-unit-extraction-plan) and the modality subsections below remain an analysis outline. The Neuropixels unit-yield result is current; the other signal-quality, stability, extraction, and cross-session analyses still need final results and prose.
+Representative unit-extraction filters and matched activity traces are shown in
+[Figure 6](#fig-segmentation-viewers).
+
+:::{iframe} ./interactive/segmentation-viewer.html
+:label: fig-segmentation-viewers
+:width: 100%
+:title: Unit extraction across recording modalities
+:placeholder: ./images/figures/generated/figure-06-segmentation-viewers.svg
+
+Unit extraction filters and matched activity across recording modalities.
+Modality tabs use the same platform logos as the other multimodal figures, and
+the source selector switches among every probe or imaging plane in one
+representative session. The tabs use the same representative sessions as the
+raw-data view in [Figure 5](#fig-aligned-neural-signals) and derive their
+filters and traces from the matched public NWBs. The **Neuropixels** tab
+provides all six probes from `ecephys_830846_2026-03-09_10-32-54`. Each source displays
+100 ms of unaveraged AP voltage with sorted-spike detections overlaid at their
+spike times and nearest displayed peak channels; common-mode correction is
+enabled by default and can be toggled to reveal the uncorrected samples.
+Selecting a marker or unit highlights its depth and waveform-spread band and
+shows a 12 s binned-rate trace plus its peak-channel mean template. The
+**Mesoscope** tab provides all eight VISp and VISl planes from
+`multiplane-ophys_832700_2026-01-29_11-18-09`,
+outlining each plane's complete NWB segmentation over a grayscale average
+projection; selection reveals classification probabilities, footprint geometry,
+and a 30 s ΔF/F (%) trace. The **SLAP2** tab provides DMD1 and DMD2 from
+`SLAP2_796630_2025-08-28-14-25-34`, outlining each plane's complete source
+segmentation over a grayscale mean image; its column-major stored (x, y) arrays
+and masks receive the same publication-level axis transpose. Mesoscope
+projections retain their stored display orientation. The fast-scanning x axis
+is horizontal for mesoscope and vertical for SLAP2. SLAP2 selection
+reveals a 30 s, approximately 200 Hz ΔF/F (%) trace. Microscopy background controls alter only
+grayscale image intensity, while filter colors remain fixed. No tab shows
+stimulus annotations. The stacked static fallback preserves one representative
+source per modality and shows twenty activity-bearing filters sampled evenly across
+filter order as vertically stacked traces with shared within-modality scales.
+Data come from the public drafts of
+[DANDI:001637](https://dandiarchive.org/dandiset/001637/draft/files),
+[DANDI:001768](https://dandiarchive.org/dandiset/001768/draft/files), and
+[DANDI:001424](https://dandiarchive.org/dandiset/001424/draft/files).
 :::
 
-:::{figure} ./images/figures/generated/figure-06-unit-extraction-plan.svg
+:::{warning} Work in progress
+:class: manuscript-wip
+[Figure 7](#fig-unit-extraction-plan) and the modality subsections below remain an analysis outline. The Neuropixels unit-yield result is current; the other signal-quality, stability, extraction, and cross-session analyses still need final results and prose.
+:::
+
+:::{figure} ./images/figures/generated/figure-07-unit-extraction-plan.svg
 :label: fig-unit-extraction-plan
 :alt: Draft panel plan for unit extraction and signal-to-noise analysis across modalities.
 :width: 100%
@@ -1077,10 +883,10 @@ GROUP3
 
 :::{warning} Work in progress
 :class: manuscript-wip
-This analysis and [Figure 7](#fig-basic-stimuli-plan) are planning placeholders. Receptive-field methods, cross-modality results, and final figure panels still need to be added.
+This analysis and [Figure 8](#fig-basic-stimuli-plan) are planning placeholders. Receptive-field methods, cross-modality results, and final figure panels still need to be added.
 :::
 
-:::{figure} ./images/figures/generated/figure-07-basic-stimuli-plan.svg
+:::{figure} ./images/figures/generated/figure-08-basic-stimuli-plan.svg
 :label: fig-basic-stimuli-plan
 :alt: Draft panel plan for basic stimulus responses across recording modalities.
 :width: 100%
@@ -1095,7 +901,7 @@ behavioral videos together with synchronized running-wheel signals, processed
 eye-tracking outputs, and stimulus-presentation intervals. Depending on the
 recording platform, the available views include body or behavior, face, eye,
 and nose cameras. The synchronized multimodal examples in
-[Figure 8](#fig-behavior-tracking) show these streams alongside the wheel signal and
+[Figure 9](#fig-behavior-tracking) show these streams alongside the wheel signal and
 current stimulus state. Existing NWB products provide wheel rotation and
 running speed, plus pupil, corneal-reflection, and eye-ellipse fits with
 likely-blink flags. The underlying videos remain available so investigators can
@@ -1169,14 +975,14 @@ cursor makes the timing relationship between all three streams explicit.
 
 :::{warning} Work in progress
 :class: manuscript-wip
-This analysis, the questions below, and [Figure 9](#fig-standard-oddball-plan) are planning placeholders. Final cross-modality oddball-response results and figure panels still need to be added.
+This analysis, the questions below, and [Figure 10](#fig-standard-oddball-plan) are planning placeholders. Final cross-modality oddball-response results and figure panels still need to be added.
 :::
 
 - Stability across the session for all modalities ?
 
 - Orientation tuning plots?
 
-:::{figure} ./images/figures/generated/figure-09-standard-oddball-plan.svg
+:::{figure} ./images/figures/generated/figure-10-standard-oddball-plan.svg
 :label: fig-standard-oddball-plan
 :alt: Placeholder slide for standard oddball responses and stimulus alignment.
 :width: 100%
@@ -1540,7 +1346,7 @@ The conclusion has not yet been drafted.
 :title: Supplementary Figure 3. Recorded Neuropixels trajectories in the Allen CCF.
 :placeholder: ./images/figures/generated/supplementary-neuropixels-trajectories.svg
 
-**Supplementary Figure 3.** Recorded Neuropixels trajectories in the Allen Mouse Brain Common Coordinate Framework (CCF) 2017. The **Interactive** view renders all CCF-localized insertions within a semi-transparent whole-brain surface and supports mouse, probe-port, camera-orientation, and brain-opacity controls. Selecting a trajectory shows its session, localized shank length, source NWB, and contiguous CCF area profile from the dorsal shank end to the tip. Line color denotes the nominal probe port (A-F). In the **Static** view, **A,** an oblique projection shows the trajectories across the depth-shaded Allen CCF whole-brain surface; **B,** a dorsal projection shows their anteroposterior and mediolateral distribution. Both panels use a semi-transparent brain surface, anatomical direction markers, and calibrated 2 mm scale bars. Electrode coordinates and area annotations come from the public draft of Dandiset 001637; the brain surface is a 100-micrometer mesh derived from the Allen CCF 2017 25-micrometer annotation volume. In total, 332 probe trajectories from 57 sessions and 16 mice had finite CCF coordinates. Three of the 60 source sessions are excluded because their NWB electrode tables lack `x`, `y`, and `z` coordinates.
+**Supplementary Figure 3.** Recorded Neuropixels trajectories in the Allen Mouse Brain Common Coordinate Framework (CCF) 2017. The **Interactive** view renders all CCF-localized insertions within a semi-transparent whole-brain surface and supports mouse, probe-port, camera-orientation, and brain-opacity controls. Selecting a trajectory shows its session, localized shank length, source NWB, and contiguous CCF area profile from the dorsal shank end to the tip. Line color denotes the nominal probe port (A-F). In the **Static** view, **A,** an oblique projection shows the trajectories across the depth-shaded Allen CCF whole-brain surface; **B,** a dorsal projection shows their anteroposterior and mediolateral distribution. Both panels use a semi-transparent brain surface, anatomical direction markers, and calibrated 2 mm scale bars; the trajectories extend laterally toward the L direction marker, matching the stereotaxic mediolateral convention. Electrode coordinates and area annotations come from the public draft of Dandiset 001637; the brain surface is a 100-micrometer mesh derived from the Allen CCF 2017 25-micrometer annotation volume. In total, 332 probe trajectories from 57 sessions and 16 mice had finite CCF coordinates. Three of the 60 source sessions are excluded because their NWB electrode tables lack `x`, `y`, and `z` coordinates.
 :::
 
 :::{iframe} ./interactive/eye-tracking-viewer.html
@@ -1551,6 +1357,17 @@ The conclusion has not yet been drafted.
 
 **Supplementary Figure 4.** Synchronized eye tracking in representative standard-oddball Neuropixels, mesoscope, and SLAP2 sessions. The **Interactive** view shows the public eye-camera video, reconstructed visual stimulus, and processed eye fits on a common 16-second clock. Fit-source tabs switch the center field, geometric values, and area trace among the pupil, corneal reflection, and eye ellipse. Marker position gives the selected fit center within the complete camera frame; the dashed crosshair marks its median center across valid nonblink fits from that source session. Marker size and color vary with selected-fit area after scaling to that fit's session-wide 5th–95th percentile nonblink range. The tracking field turns black during likely-blink samples, which are also shown as shaded intervals in the area trace. The **Static** view vertically stacks the raw pupil x position, y position, and area for each modality on the same 0–16-second axis. Teal bands mark the complete 90-degree orientation-deviant presentation and gray bands mark likely-blink intervals; traces break at invalid fits rather than interpolating through them. Neuropixels and mesoscope eye-camera frames are aligned through 100-kHz exposure edges in the session sync file, with reported dropped frames removed before mapping to MP4 time. SLAP2 uses aligned Harp timestamps and packaged pupil-frame indices to map the processed fits to its 30 Hz EyeCamera MP4. Eye fits, blink flags, and stimulus rows come from each public NWB time base. Modality tabs switch among all three source-backed examples, and source links expose the corresponding DANDI and raw S3 records.
 :::
+
+:::{iframe} ./interactive/optotagging-heatmaps.html
+:label: fig-supp-optotagging-heatmaps
+:enumerated: false
+:width: 100%
+:title: Supplementary Figure 5. Optotagging responses and putative optotagged-cell yield.
+:placeholder: ./images/figures/generated/optotagging-heatmaps.svg
+
+**Supplementary Figure 5.** Optotagging responses and putative optotagged-cell yield across Neuropixels sessions. The **Interactive** view displays laser-aligned, baseline-z-scored 1-ms peri-stimulus time histograms for three representative public sessions selected near the 50th, 80th, and 95th percentiles of optotagged-cell yield. Session and Allen major-parent selectors constrain the view to available values, and an adjustable symmetric z-score scale supports comparison of raised-cosine, 5 Hz, and 40 Hz stimulation. Within each condition, units are ordered from strongest to weakest by firing rate measured only during the exact laser-on windows. In the **Static** view, **A,** the 5 Hz response from `ecephys_830851_2026-03-19_10-49-11`; five teal marks denote the exact 10 ms laser pulses, rows are ordered from strongest to weakest pulse-window firing rate, and blue-to-red color denotes negative-to-positive baseline z score. **B,** Overall optotagged-cell yield across all 60 source sessions. **C,** Yield by Allen major parent area. **D,** The 18 structures with the highest mean yield; all 48 structure distributions remain in the supplied source snapshot. In B-D, gray dots denote individual sessions and teal bars or lines denote means. Area-level means include only sessions sampling that area, with the contributing session count shown as *n*. Data come from the public draft of [Dandiset 001637](https://dandiarchive.org/dandiset/001637/draft/files).
+:::
+
 
 # Supplementary Text 1: Published oddball paradigms and sampling ranges
 

@@ -10,7 +10,6 @@ import re
 import shutil
 import statistics
 import struct
-import xml.etree.ElementTree as ET
 import zlib
 from dataclasses import asdict, dataclass
 from html import escape
@@ -30,6 +29,7 @@ FIGURE_TYPE_SCALE = {
     "label": 15,
     "small": 12,
 }
+FIGURE_TYPE_SMALL = FIGURE_TYPE_SCALE["small"]
 SESSION_TYPE_COLORS = {
     "sensorimotor": "#283185",
     "standard": "#22BCAD",
@@ -58,7 +58,10 @@ def write_svg_output(output: Path, svg: list[str]) -> None:
 
     def normalized_text_tag(match: re.Match[str]) -> str:
         tag = match.group(0)
-        if f'font-family="{FIGURE_SANS_FONT}"' not in tag:
+        if not any(
+            f'font-family="{font}"' in tag
+            for font in (FIGURE_SANS_FONT, FIGURE_MONO_FONT)
+        ):
             return tag
         return re.sub(r'font-size="([0-9.]+)"', normalized_font_size, tag)
 
@@ -114,13 +117,13 @@ UNIT_EXTRACTION_PLAN_SOURCE = IMPORTED_FIGURE_DIR / "figure-04-unit-extraction-p
 BASIC_STIMULI_PLAN_SOURCE = IMPORTED_FIGURE_DIR / "figure-05-basic-stimuli-plan.png"
 STANDARD_ODDBALL_PLAN_SOURCE = IMPORTED_FIGURE_DIR / "figure-07-standard-oddball-plan.png"
 UNIT_EXTRACTION_PLAN_OUTPUT = (
-    REPO_ROOT / "images" / "figures" / "generated" / "figure-06-unit-extraction-plan.svg"
+    REPO_ROOT / "images" / "figures" / "generated" / "figure-07-unit-extraction-plan.svg"
 )
 BASIC_STIMULI_PLAN_OUTPUT = (
-    REPO_ROOT / "images" / "figures" / "generated" / "figure-07-basic-stimuli-plan.svg"
+    REPO_ROOT / "images" / "figures" / "generated" / "figure-08-basic-stimuli-plan.svg"
 )
 STANDARD_ODDBALL_PLAN_OUTPUT = (
-    REPO_ROOT / "images" / "figures" / "generated" / "figure-09-standard-oddball-plan.svg"
+    REPO_ROOT / "images" / "figures" / "generated" / "figure-10-standard-oddball-plan.svg"
 )
 LITERATURE_COMPARISON_OUTPUT = REPO_ROOT / "interactive" / "literature-comparison.html"
 BEHAVIOR_VIEWER_OUTPUT = REPO_ROOT / "interactive" / "behavior-viewer.html"
@@ -155,6 +158,62 @@ NEURAL_STATIC_FRAME_PROVENANCE_PATH = (
 )
 NEURAL_STATIC_OUTPUT = (
     REPO_ROOT / "images" / "figures" / "generated" / "raw-neural-recordings.svg"
+)
+SEGMENTATION_VIEWER_DATA_PATH = DATA_DIR / "segmentation-viewers.json"
+SEGMENTATION_VIEWER_PROVENANCE_PATH = SEGMENTATION_VIEWER_DATA_PATH.with_suffix(
+    ".provenance.json"
+)
+SEGMENTATION_VIEWER_MEDIA_DIR = (
+    REPO_ROOT / "figure_sources" / "media" / "segmentation-viewers"
+)
+SEGMENTATION_VIEWER_OUTPUT = REPO_ROOT / "interactive" / "segmentation-viewer.html"
+SEGMENTATION_VIEWER_TITLES = {
+    "neuropixels": "Neuropixels unit-template viewer",
+    "mesoscope": "Mesoscope ROI segmentation viewer",
+    "slap2": "SLAP2 source-segmentation viewer",
+}
+SEGMENTATION_PANEL_LABELS = {
+    "neuropixels": ("A", "B"),
+    "mesoscope": ("C", "D"),
+    "slap2": ("E", "F"),
+}
+SEGMENTATION_FILTER_COLORS = (
+    (37, 170, 225),
+    (140, 198, 63),
+    (204, 175, 45),
+    (214, 92, 72),
+    (36, 188, 173),
+    (177, 96, 173),
+)
+SEGMENTATION_VIEWER_STATIC_OUTPUTS = {
+    "neuropixels": (
+        REPO_ROOT
+        / "images"
+        / "figures"
+        / "generated"
+        / "figure-06-neuropixels-unit-filters.svg"
+    ),
+    "mesoscope": (
+        REPO_ROOT
+        / "images"
+        / "figures"
+        / "generated"
+        / "figure-06-mesoscope-roi-filters.svg"
+    ),
+    "slap2": (
+        REPO_ROOT
+        / "images"
+        / "figures"
+        / "generated"
+        / "figure-06-slap2-source-filters.svg"
+    ),
+}
+SEGMENTATION_VIEWER_STATIC_OUTPUT = (
+    REPO_ROOT
+    / "images"
+    / "figures"
+    / "generated"
+    / "figure-06-segmentation-viewers.svg"
 )
 SLAP2_STATIC_COMPOSITES = {
     "dmd1-composite": ("dmd1-detector-1", "dmd1-detector-2"),
@@ -203,6 +262,26 @@ NEUROPIXELS_TRAJECTORY_STATIC_OUTPUT = (
 )
 NEUROPIXELS_TRAJECTORY_INTERACTIVE_OUTPUT = (
     REPO_ROOT / "interactive" / "neuropixels-trajectories.html"
+)
+OPTOTAGGING_HEATMAP_DATA_PATH = DATA_DIR / "optotagging-heatmaps.json"
+OPTOTAGGING_HEATMAP_PROVENANCE_PATH = OPTOTAGGING_HEATMAP_DATA_PATH.with_suffix(
+    ".provenance.json"
+)
+OPTOTAGGING_STATIC_SUMMARY_PATH = DATA_DIR / "optotagging-static-summary.json"
+OPTOTAGGING_HEATMAP_SOURCE_DIR = (
+    REPO_ROOT / "figure_sources" / "media" / "optotagging"
+)
+OPTOTAGGING_STATIC_LEGACY_SOURCE = (
+    OPTOTAGGING_HEATMAP_SOURCE_DIR / "optotagging-static-legacy.svg"
+)
+OPTOTAGGING_STATIC_SOURCE = (
+    OPTOTAGGING_HEATMAP_SOURCE_DIR / "optotagging-static-composite.svg"
+)
+OPTOTAGGING_HEATMAP_INTERACTIVE_OUTPUT = (
+    REPO_ROOT / "interactive" / "optotagging-heatmaps.html"
+)
+OPTOTAGGING_HEATMAP_STATIC_OUTPUT = (
+    REPO_ROOT / "images" / "figures" / "generated" / "optotagging-heatmaps.svg"
 )
 MEDIA_DIR = REPO_ROOT / "figure_sources" / "media"
 PLATFORM_LOGO_PROVENANCE_PATH = (
@@ -590,25 +669,6 @@ def append_hardware_image(
     )
 
 
-def append_hardware_caption(
-    svg: list[str],
-    *,
-    x: float,
-    y: float,
-    lines: tuple[str, ...],
-    font_size: int = HARDWARE_DESCRIPTION_FONT_SIZE,
-) -> None:
-    svg.append(
-        f'<text class="hardware-caption" x="{x}" y="{y}" text-anchor="middle" '
-        f'font-family="Source Sans 3, sans-serif" font-size="{font_size}" '
-        'font-weight="600" fill="#4D5553">'
-    )
-    for line_index, line in enumerate(lines):
-        dy = 0 if line_index == 0 else 24
-        svg.append(f'<tspan x="{x}" dy="{dy}">{escape(line)}</tspan>')
-    svg.append("</text>")
-
-
 def fitted_image_bounds(asset: dict, box: tuple[float, float, float, float]) -> tuple[float, ...]:
     x, y, width, height = box
     aspect_ratio = asset["width"] / asset["height"]
@@ -644,8 +704,6 @@ def write_hardware_figure_svg(output: Path = HARDWARE_STATIC_OUTPUT) -> Path:
             "rig": (220, 105, 515, 360),
             "platform": (775, 112, 410, 343),
             "target": (1320, 120, 390, 330),
-            "caption_y": 88,
-            "caption": ("6 probes spanning cortical and", "subcortical structures"),
         },
         {
             "modality": "mesoscope",
@@ -654,8 +712,6 @@ def write_hardware_figure_svg(output: Path = HARDWARE_STATIC_OUTPUT) -> Path:
             "rig": (220, 505, 515, 365),
             "platform": (765, 525, 430, 312),
             "target": (1235, 505, 520, 350),
-            "caption_y": 490,
-            "caption": ("8 imaging planes across VISp and VISlm",),
         },
         {
             "modality": "slap2",
@@ -664,8 +720,6 @@ def write_hardware_figure_svg(output: Path = HARDWARE_STATIC_OUTPUT) -> Path:
             "rig": (220, 920, 515, 335),
             "platform": (765, 925, 430, 312),
             "target": (1290, 905, 380, 345),
-            "caption_y": 1272,
-            "caption": ("Dual-plane dendritic imaging of a VISp", "layer II/III pyramidal neuron"),
         },
     )
     svg = [
@@ -728,12 +782,6 @@ def write_hardware_figure_svg(output: Path = HARDWARE_STATIC_OUTPUT) -> Path:
             y=row["target"][1],
             width=row["target"][2],
             height=row["target"][3],
-        )
-        append_hardware_caption(
-            svg,
-            x=1510,
-            y=row["caption_y"],
-            lines=row["caption"],
         )
     neuropixels_bounds = fitted_image_bounds(
         assets["neuropixels_brain_targeting"], rows[0]["target"]
@@ -900,6 +948,8 @@ def write_hardware_figure_svg(output: Path = HARDWARE_STATIC_OUTPUT) -> Path:
     svg.extend(
         [
             '<g class="mesoscope-target-legend">',
+            '<rect x="1277" y="507" width="160" height="104" rx="3" '
+            'fill="#FFFFFF" fill-opacity="0.9"/>',
             '<line x1="1288" y1="525" x2="1317" y2="525" '
             'stroke="#8FD246" stroke-width="4"/>',
             '<text x="1325" y="531" font-family="Source Sans 3, sans-serif" '
@@ -917,20 +967,24 @@ def write_hardware_figure_svg(output: Path = HARDWARE_STATIC_OUTPUT) -> Path:
             '<text x="1325" y="600" font-family="Source Sans 3, sans-serif" '
             'font-size="12" fill="#303536">Layer V</text>',
             '<text x="1318" y="746" font-family="Source Sans 3, sans-serif" '
-            'font-size="15" font-weight="700" fill="#293133">VISlm</text>',
+            'font-size="15" font-weight="700" fill="#172126" stroke="#FFFFFF" '
+            'stroke-width="4" paint-order="stroke">VISlm</text>',
             '<text x="1460" y="716" font-family="Source Sans 3, sans-serif" '
-            'font-size="15" font-weight="700" fill="#293133">VISp</text>',
+            'font-size="15" font-weight="700" fill="#172126" stroke="#FFFFFF" '
+            'stroke-width="4" paint-order="stroke">VISp</text>',
             '</g>',
             f'<text class="slap2-plane-label" x="{slap2_plane_label_x:.2f}" '
             f'y="{apical_plane_label_y:.2f}" '
             'font-family="Source Sans 3, sans-serif" '
             f'font-size="{HARDWARE_DESCRIPTION_FONT_SIZE}" font-weight="700" '
-            'fill="#293133">Apical plane</text>',
+            'fill="#172126" stroke="#FFFFFF" stroke-width="4" '
+            'paint-order="stroke">Apical plane</text>',
             f'<text class="slap2-plane-label" x="{slap2_plane_label_x:.2f}" '
             f'y="{proximal_plane_label_y:.2f}" '
             'font-family="Source Sans 3, sans-serif" '
             f'font-size="{HARDWARE_DESCRIPTION_FONT_SIZE}" font-weight="700" '
-            'fill="#293133">Proximal plane</text>',
+            'fill="#172126" stroke="#FFFFFF" stroke-width="4" '
+            'paint-order="stroke">Proximal plane</text>',
         ]
     )
     svg.append("</svg>")
@@ -1258,6 +1312,14 @@ def load_embed_auto_height() -> str:
     return (JAVASCRIPT_DIR / "embed-auto-height.js").read_text(encoding="utf-8")
 
 
+def load_figure_stylesheet(name: str) -> str:
+    typography = (JAVASCRIPT_DIR / "figure-typography.css").read_text(
+        encoding="utf-8"
+    )
+    stylesheet = (JAVASCRIPT_DIR / name).read_text(encoding="utf-8")
+    return f"{typography}\n\n{stylesheet}"
+
+
 def write_interactive_html(output: Path = INTERACTIVE_OUTPUT) -> Path:
     output.parent.mkdir(parents=True, exist_ok=True)
     sources = json.loads(STIMULUS_SOURCES_PATH.read_text(encoding="utf-8"))
@@ -1273,7 +1335,7 @@ def write_interactive_html(output: Path = INTERACTIVE_OUTPUT) -> Path:
         "stimulusTableExcerpts": load_stimulus_table_excerpts(sources),
     }
     template = (JAVASCRIPT_DIR / "stimulus-viewer.html").read_text(encoding="utf-8")
-    stylesheet = (JAVASCRIPT_DIR / "stimulus-viewer.css").read_text(encoding="utf-8")
+    stylesheet = load_figure_stylesheet("stimulus-viewer.css")
     javascript = (JAVASCRIPT_DIR / "stimulus-viewer.js").read_text(encoding="utf-8")
     static_output = write_context_controls_svg()
     static_data = base64.b64encode(normalized_text_bytes(static_output)).decode()
@@ -1302,7 +1364,7 @@ def write_data_explorer_html(
         write_session_inventory_svg(static_output)
     static_data = base64.b64encode(normalized_text_bytes(static_output)).decode()
     template = (JAVASCRIPT_DIR / "data-explorer.html").read_text(encoding="utf-8")
-    stylesheet = (JAVASCRIPT_DIR / "data-explorer.css").read_text(encoding="utf-8")
+    stylesheet = load_figure_stylesheet("data-explorer.css")
     javascript = (JAVASCRIPT_DIR / "data-explorer.js").read_text(encoding="utf-8")
     html = (
         template.replace("__DATA_EXPLORER_CSS__", stylesheet)
@@ -1339,9 +1401,7 @@ def write_literature_comparison_html(
     template = (JAVASCRIPT_DIR / "literature-comparison.html").read_text(
         encoding="utf-8"
     )
-    stylesheet = (JAVASCRIPT_DIR / "literature-comparison.css").read_text(
-        encoding="utf-8"
-    )
+    stylesheet = load_figure_stylesheet("literature-comparison.css")
     javascript = (JAVASCRIPT_DIR / "literature-comparison.js").read_text(
         encoding="utf-8"
     )
@@ -1366,7 +1426,7 @@ def write_unit_yield_html(
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = load_unit_yield_data(data_path, provenance_path)
     template = (JAVASCRIPT_DIR / "unit-yield.html").read_text(encoding="utf-8")
-    stylesheet = (JAVASCRIPT_DIR / "unit-yield.css").read_text(encoding="utf-8")
+    stylesheet = load_figure_stylesheet("unit-yield.css")
     javascript = (JAVASCRIPT_DIR / "unit-yield.js").read_text(encoding="utf-8")
     html = (
         template.replace("__UNIT_YIELD_CSS__", stylesheet)
@@ -1380,6 +1440,704 @@ def write_unit_yield_html(
     output.write_text(html, encoding="utf-8", newline="\n")
     return output
 
+
+def load_optotagging_heatmap_data(
+    data_path: Path = OPTOTAGGING_HEATMAP_DATA_PATH,
+    provenance_path: Path = OPTOTAGGING_HEATMAP_PROVENANCE_PATH,
+    media_dir: Path = OPTOTAGGING_HEATMAP_SOURCE_DIR,
+) -> dict:
+    """Load and validate the committed representative optotagging snapshot."""
+
+    payload = json.loads(data_path.read_text(encoding="utf-8"))
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    version = payload.get("version")
+    if version not in {1, 2} or provenance.get("version") != version:
+        raise RuntimeError("Optotagging heatmap snapshot version is not supported.")
+    if not text_sha256_matches(data_path, provenance.get("manifest_sha256", "")):
+        raise RuntimeError("Optotagging heatmap manifest checksum does not match.")
+
+    sessions = payload.get("sessions", [])
+    if (
+        not sessions
+        or payload.get("session_count") != len(sessions)
+        or provenance.get("session_count") != len(sessions)
+        or payload.get("total_unit_count")
+        != sum(session.get("unit_count", 0) for session in sessions)
+        or provenance.get("total_unit_count") != payload.get("total_unit_count")
+    ):
+        raise RuntimeError("Optotagging heatmap coverage metadata is inconsistent.")
+
+    asset_manifest = provenance.get("asset_manifest", [])
+    skipped_assets = provenance.get("skipped_assets", [])
+    failed_assets = provenance.get("failed_assets", [])
+    expected_asset_count = provenance.get(
+        "source_session_count",
+        len(sessions) + len(skipped_assets) + len(failed_assets),
+    )
+    asset_manifest_sha256 = hashlib.sha256(
+        json.dumps(asset_manifest, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+    if (
+        expected_asset_count < len(sessions)
+        or len(asset_manifest) != expected_asset_count
+        or asset_manifest_sha256 != provenance.get("asset_manifest_sha256")
+        or any(
+            not asset.get("digest", {}).get("dandi:sha2-256")
+            for asset in asset_manifest
+        )
+    ):
+        raise RuntimeError("Optotagging source asset manifest is invalid.")
+
+    session_ids = [session.get("session_id") for session in sessions]
+    if (
+        session_ids != sorted(session_ids)
+        or len(session_ids) != len(set(session_ids))
+        or payload.get("default_session_id") not in session_ids
+    ):
+        raise RuntimeError("Optotagging heatmap session inventory is invalid.")
+
+    media_manifest = []
+    for session in sessions:
+        if version == 2:
+            atlas_file = session.get("atlas_file", "")
+            numeric_png_file = session.get("numeric_png_file", "")
+            if (
+                Path(atlas_file).name != atlas_file
+                or not atlas_file.endswith(".atlas.json")
+                or Path(numeric_png_file).name != numeric_png_file
+                or not numeric_png_file.endswith(".atlas.png")
+            ):
+                raise RuntimeError("Invalid optotagging numeric atlas path.")
+            atlas_bytes = (media_dir / atlas_file).read_bytes()
+            numeric_png = (media_dir / numeric_png_file).read_bytes()
+            if (
+                hashlib.sha256(atlas_bytes).hexdigest() != session.get("atlas_sha256")
+                or hashlib.sha256(numeric_png).hexdigest()
+                != session.get("numeric_png_sha256")
+                or len(numeric_png) < 24
+                or not numeric_png.startswith(b"\x89PNG\r\n\x1a\n")
+                or numeric_png[24:26] != b"\x08\x00"
+            ):
+                raise RuntimeError(
+                    f"Optotagging numeric atlas is invalid: {atlas_file}"
+                )
+            atlas = json.loads(atlas_bytes)
+            unit_count = session.get("unit_count")
+            parent_areas = atlas.get("parent_areas", [])
+            parent_codes = atlas.get("parent_codes", [])
+            orders = atlas.get("strongest_first_unit_indices", {})
+            condition_names = [
+                condition["table_name"] for condition in payload["conditions"]
+            ]
+            expected_offsets = {
+                condition_name: index * unit_count
+                for index, condition_name in enumerate(condition_names)
+            }
+            quantization = atlas.get("quantization", {})
+            time_seconds = atlas.get("time_seconds", [])
+            expected_units = list(range(unit_count))
+            png_width, png_height = struct.unpack(">II", numeric_png[16:24])
+            if (
+                atlas.get("version") != 2
+                or atlas.get("unit_count") != unit_count
+                or atlas.get("numeric_png_file") != numeric_png_file
+                or parent_areas != sorted(set(parent_areas))
+                or not all(isinstance(area, str) and area for area in parent_areas)
+                or len(parent_codes) != unit_count
+                or any(code < 0 or code >= len(parent_areas) for code in parent_codes)
+                or set(orders) != set(condition_names)
+                or any(sorted(order) != expected_units for order in orders.values())
+                or atlas.get("condition_row_offsets") != expected_offsets
+                or quantization
+                != {
+                    "dtype": "int8",
+                    "scale": 15.875,
+                    "range": [-8.0, 8.0],
+                    "nan_sentinel": -128,
+                    "png_channels": "single-channel uint8 viewed as signed int8",
+                }
+                or len(time_seconds) != 2
+                or not all(isinstance(value, int | float) for value in time_seconds)
+                or not math.isfinite(time_seconds[0])
+                or not math.isfinite(time_seconds[1])
+                or time_seconds[0] >= time_seconds[1]
+                or png_width != atlas.get("time_bin_count")
+                or png_width <= 0
+                or png_height != unit_count * len(condition_names)
+            ):
+                raise RuntimeError(
+                    f"Optotagging numeric atlas metadata is invalid: {atlas_file}"
+                )
+            media_manifest.extend(
+                [
+                    {"file": atlas_file, "sha256": session["atlas_sha256"]},
+                    {
+                        "file": numeric_png_file,
+                        "sha256": session["numeric_png_sha256"],
+                    },
+                ]
+            )
+            if "image_file" not in session:
+                continue
+        image_file = session.get("image_file", "")
+        relative_image = Path(image_file)
+        if (
+            not image_file
+            or relative_image.name != image_file
+            or relative_image.suffix.lower() != ".webp"
+        ):
+            raise RuntimeError(f"Invalid optotagging image path: {image_file}")
+        image_path = media_dir / image_file
+        image = image_path.read_bytes()
+        if (
+            len(image) < 12
+            or not image.startswith(b"RIFF")
+            or image[8:12] != b"WEBP"
+            or hashlib.sha256(image).hexdigest() != session.get("image_sha256")
+            or not isinstance(session.get("image_width"), int)
+            or not isinstance(session.get("image_height"), int)
+            or session["image_width"] <= 0
+            or session["image_height"] <= 0
+        ):
+            raise RuntimeError(f"Optotagging heatmap image is invalid: {image_file}")
+        if version == 1:
+            media_manifest.append(
+                {
+                    "image_file": image_file,
+                    "image_sha256": session["image_sha256"],
+                }
+            )
+        else:
+            media_manifest.append(
+                {"file": image_file, "sha256": session["image_sha256"]}
+            )
+
+    media_manifest_sha256 = hashlib.sha256(
+        json.dumps(media_manifest, separators=(",", ":"), sort_keys=True).encode()
+    ).hexdigest()
+    if media_manifest_sha256 != provenance.get("media_manifest_sha256"):
+        raise RuntimeError("Optotagging heatmap media manifest checksum does not match.")
+    return payload
+
+
+def write_optotagging_heatmap_html(
+    output: Path = OPTOTAGGING_HEATMAP_INTERACTIVE_OUTPUT,
+    data_path: Path = OPTOTAGGING_HEATMAP_DATA_PATH,
+    provenance_path: Path = OPTOTAGGING_HEATMAP_PROVENANCE_PATH,
+    media_dir: Path = OPTOTAGGING_HEATMAP_SOURCE_DIR,
+    static_output: Path = OPTOTAGGING_HEATMAP_STATIC_OUTPUT,
+    static_source: Path | None = None,
+) -> Path:
+    """Build the standalone representative-session optotagging heatmap explorer."""
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_optotagging_heatmap_data(data_path, provenance_path, media_dir)
+    if static_source is None:
+        static_source = media_dir / OPTOTAGGING_STATIC_SOURCE.name
+    write_optotagging_heatmap_svg(
+        static_output,
+        data_path,
+        provenance_path,
+        media_dir,
+        static_source=static_source,
+    )
+    template = (JAVASCRIPT_DIR / "optotagging-heatmaps.html").read_text(
+        encoding="utf-8"
+    )
+    stylesheet = load_figure_stylesheet("optotagging-heatmaps.css")
+    javascript = (JAVASCRIPT_DIR / "optotagging-heatmaps.js").read_text(
+        encoding="utf-8"
+    )
+    embedded_atlases = {}
+    if payload["version"] == 2:
+        for session in payload["sessions"]:
+            atlas = json.loads(
+                (media_dir / session["atlas_file"]).read_text(encoding="utf-8")
+            )
+            numeric_png = (media_dir / session["numeric_png_file"]).read_bytes()
+            embedded_atlases[session["session_id"]] = {
+                "metadata": atlas,
+                "image": (
+                    "data:image/png;base64,"
+                    + base64.b64encode(numeric_png).decode("ascii")
+                ),
+            }
+    html = (
+        template.replace("__OPTOTAGGING_CSS__", stylesheet)
+        .replace(
+            "__OPTOTAGGING_STATIC_IMAGE__",
+            f"media/optotagging/{static_output.name}",
+        )
+        .replace(
+            "__OPTOTAGGING_DATA__",
+            json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True),
+        )
+        .replace(
+            "__OPTOTAGGING_ATLASES__",
+            json.dumps(
+                embedded_atlases,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
+        .replace("__OPTOTAGGING_JS__", javascript)
+        .replace("__EMBED_AUTO_HEIGHT_JS__", load_embed_auto_height())
+    )
+    output.write_text(html, encoding="utf-8", newline="\n")
+
+    media_output = output.parent / "media" / "optotagging"
+    if media_output.exists():
+        shutil.rmtree(media_output)
+    media_output.mkdir(parents=True)
+    if payload["version"] == 1:
+        for session in payload["sessions"]:
+            shutil.copy2(
+                media_dir / session["image_file"],
+                media_output / session["image_file"],
+            )
+    shutil.copy2(static_output, media_output / static_output.name)
+    return output
+
+
+def load_optotagging_static_summary(
+    summary_path: Path = OPTOTAGGING_STATIC_SUMMARY_PATH,
+) -> dict:
+    """Load and validate yield distributions extracted from the legacy static SVG."""
+
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    source_path = REPO_ROOT / summary.get("source", "")
+    source_session_count = summary.get("source_session_count")
+    if (
+        summary.get("version") != 1
+        or not isinstance(source_session_count, int)
+        or source_session_count <= 0
+        or not source_path.is_file()
+        or hashlib.sha256(source_path.read_bytes()).hexdigest()
+        != summary.get("source_sha256")
+    ):
+        raise RuntimeError("Optotagging static-summary provenance is invalid.")
+
+    def validate_records(records: list[dict], expected_count: int | None = None) -> None:
+        labels = [record.get("label") for record in records]
+        if len(labels) != len(set(labels)) or any(not label for label in labels):
+            raise RuntimeError("Optotagging static-summary labels are invalid.")
+        for record in records:
+            counts = record.get("counts", [])
+            sampled_session_count = record.get("sampled_session_count")
+            if (
+                not counts
+                or sampled_session_count != len(counts)
+                or len(counts) > source_session_count
+                or expected_count is not None
+                and len(counts) != expected_count
+                or any(not isinstance(count, int) or count < 0 for count in counts)
+                or not math.isclose(
+                    statistics.fmean(counts),
+                    record.get("mean", math.nan),
+                    abs_tol=1e-6,
+                )
+            ):
+                raise RuntimeError(
+                    f"Optotagging static-summary values are invalid: {record.get('label')}"
+                )
+
+    overall = summary.get("overall")
+    major_parent = summary.get("major_parent", [])
+    structures = summary.get("structures", [])
+    if not isinstance(overall, dict) or len(major_parent) != 10 or len(structures) != 48:
+        raise RuntimeError("Optotagging static-summary dimensions changed.")
+    validate_records([overall], expected_count=source_session_count)
+    validate_records(major_parent)
+    validate_records(structures)
+    return summary
+
+
+def optotagging_heatmap_color(value: float | None, limit: float = 3.0) -> tuple[int, int, int]:
+    if value is None or not math.isfinite(value):
+        return (230, 230, 230)
+    fraction = max(-1.0, min(1.0, value / limit))
+    cold = (59, 76, 192)
+    middle = (247, 247, 247)
+    warm = (180, 4, 38)
+    start, end = (cold, middle) if fraction < 0 else (middle, warm)
+    amount = fraction + 1 if fraction < 0 else fraction
+    return tuple(
+        round(left + amount * (right - left))
+        for left, right in zip(start, end, strict=True)
+    )
+
+
+def optotagging_static_heatmap_png(
+    payload: dict,
+    media_dir: Path,
+    *,
+    session_id: str,
+    condition_name: str,
+) -> tuple[bytes, dict]:
+    session = next(
+        (record for record in payload["sessions"] if record["session_id"] == session_id),
+        None,
+    )
+    if session is None:
+        raise RuntimeError(f"Static optotagging session is unavailable: {session_id}")
+    metadata = json.loads((media_dir / session["atlas_file"]).read_text(encoding="utf-8"))
+    width, height, scalars = decode_grayscale_png(media_dir / session["numeric_png_file"])
+    unit_count = metadata["unit_count"]
+    if height != unit_count * len(payload["conditions"]):
+        raise RuntimeError("Optotagging static atlas dimensions changed.")
+    row_offset = metadata["condition_row_offsets"][condition_name]
+    order = metadata["strongest_first_unit_indices"][condition_name]
+    scale = metadata["quantization"]["scale"]
+    nan_sentinel = metadata["quantization"]["nan_sentinel"]
+    pixels = bytearray(width * unit_count * 3)
+    for display_row, unit_index in enumerate(order):
+        source_offset = (row_offset + unit_index) * width
+        target_offset = display_row * width * 3
+        for column in range(width):
+            unsigned = scalars[source_offset + column]
+            quantized = unsigned if unsigned < 128 else unsigned - 256
+            value = None if quantized == nan_sentinel else quantized / scale
+            color = optotagging_heatmap_color(value)
+            target = target_offset + column * 3
+            pixels[target : target + 3] = bytes(color)
+    return encode_rgb_png(width, unit_count, bytes(pixels)), metadata
+
+
+def append_optotagging_panel_heading(
+    svg: list[str],
+    *,
+    label: str,
+    title: str | None,
+    x: float,
+    y: float,
+) -> None:
+    svg.append(
+        f'<text x="{x}" y="{y}" font-family="{FIGURE_SANS_FONT}" '
+        f'font-size="{FIGURE_TYPE_SCALE["panel"]}" font-weight="700" '
+        f'fill="#263033">{label}</text>'
+    )
+    if title:
+        svg.append(
+            f'<text x="{x + 46}" y="{y - 2}" font-family="{FIGURE_SANS_FONT}" '
+            f'font-size="{FIGURE_TYPE_SCALE["modality"]}" font-weight="700" '
+            f'fill="#263033">{escape(title)}</text>'
+        )
+
+
+def append_optotagging_yield_panel(
+    svg: list[str],
+    records: list[dict],
+    *,
+    label: str,
+    y_axis_label: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    tick_step: int,
+    label_width: float,
+    bar_height: float = 12,
+    point_radius: float = 2.1,
+) -> None:
+    records = sorted(records, key=lambda record: (-record["mean"], record["label"]))
+    append_optotagging_panel_heading(svg, label=label, title=None, x=x, y=y + 32)
+    plot_left = x + label_width
+    plot_right = x + width - 48
+    plot_top = y + 70
+    plot_bottom = y + height - 54
+    maximum = max(max(record["counts"]) for record in records)
+    axis_max = max(tick_step, math.ceil(maximum / tick_step) * tick_step)
+    plot_width = plot_right - plot_left
+    row_height = (plot_bottom - plot_top) / len(records)
+    for tick in range(0, axis_max + 1, tick_step):
+        tick_x = plot_left + tick / axis_max * plot_width
+        svg.extend(
+            [
+                f'<line x1="{tick_x:.2f}" y1="{plot_bottom}" x2="{tick_x:.2f}" '
+                f'y2="{plot_bottom + 6}" stroke="#69716F" stroke-width="1.2"/>',
+                f'<text x="{tick_x:.2f}" y="{plot_bottom + 19}" text-anchor="middle" '
+                f'font-family="{FIGURE_MONO_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+                f'fill="#68706E">{tick}</text>',
+            ]
+        )
+    for row_index, record in enumerate(records):
+        center_y = plot_top + (row_index + 0.5) * row_height
+        mean_x = plot_left + record["mean"] / axis_max * plot_width
+        half_bar = bar_height / 2
+        svg.extend(
+            [
+                f'<text x="{plot_left - 9}" y="{center_y + 4:.2f}" text-anchor="end" '
+                f'font-family="{FIGURE_SANS_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+                f'font-weight="600" fill="#303536">{escape(record["label"])}</text>',
+                f'<rect x="{plot_left}" y="{center_y - half_bar:.2f}" '
+                f'width="{max(0, mean_x - plot_left):.2f}" height="{bar_height:g}" '
+                'fill="#315F73" fill-opacity="0.68"/>',
+                f'<line x1="{mean_x:.2f}" y1="{center_y - half_bar - 2:.2f}" '
+                f'x2="{mean_x:.2f}" y2="{center_y + half_bar + 2:.2f}" '
+                'stroke="#1F434F" stroke-width="2"/>',
+                f'<text x="{x + width - 2}" y="{center_y + 4:.2f}" text-anchor="end" '
+                f'font-family="{FIGURE_MONO_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+                f'fill="#68706E">n={record["sampled_session_count"]}</text>',
+            ]
+        )
+        for point_index, count in enumerate(record["counts"]):
+            point_x = plot_left + count / axis_max * plot_width
+            jitter = (((point_index * 37) % 13) - 6) / 6 * min(4, row_height * 0.18)
+            svg.append(
+                f'<circle cx="{point_x:.2f}" cy="{center_y + jitter:.2f}" '
+                f'r="{point_radius:g}" '
+                'fill="#596663" fill-opacity="0.48"/>'
+            )
+    svg.extend(
+        [
+            f'<text x="{plot_left - 9}" y="{plot_top - 12}" text-anchor="end" '
+            f'font-family="{FIGURE_SANS_FONT}" font-size="15" '
+            f'fill="#303536">{escape(y_axis_label)}</text>',
+            f'<line x1="{plot_left}" y1="{plot_bottom}" x2="{plot_right}" '
+            f'y2="{plot_bottom}" stroke="#69716F" stroke-width="1.4"/>',
+            f'<text x="{(plot_left + plot_right) / 2:.2f}" y="{y + height - 8}" '
+            f'text-anchor="middle" font-family="{FIGURE_SANS_FONT}" font-size="15" '
+            'fill="#303536">Optotagged cells per session</text>',
+        ]
+    )
+
+
+def write_optotagging_static_source(
+    output: Path = OPTOTAGGING_STATIC_SOURCE,
+    data_path: Path = OPTOTAGGING_HEATMAP_DATA_PATH,
+    provenance_path: Path = OPTOTAGGING_HEATMAP_PROVENANCE_PATH,
+    media_dir: Path = OPTOTAGGING_HEATMAP_SOURCE_DIR,
+    summary_path: Path = OPTOTAGGING_STATIC_SUMMARY_PATH,
+) -> Path:
+    """Render the publication-style static optotagging figure from committed data."""
+
+    payload = load_optotagging_heatmap_data(data_path, provenance_path, media_dir)
+    summary = load_optotagging_static_summary(summary_path)
+    session_id = payload["default_session_id"]
+    condition_name = "5 hz pulse train_presentations"
+    condition = next(
+        item for item in payload["conditions"] if item["table_name"] == condition_name
+    )
+    heatmap_png, metadata = optotagging_static_heatmap_png(
+        payload,
+        media_dir,
+        session_id=session_id,
+        condition_name=condition_name,
+    )
+    session = next(item for item in payload["sessions"] if item["session_id"] == session_id)
+    condition_counts = session["condition_counts"][condition_name]
+    pulse_count = round(
+        condition_counts["pulses"] / condition_counts["presentations"]
+    )
+    heatmap_uri = base64.b64encode(heatmap_png).decode("ascii")
+    width, height = 1200, 960
+    yield_color = "#315F73"
+    svg = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" role="img" aria-labelledby="title description">',
+        '<title id="title">Optotagging response and yield summary</title>',
+        '<desc id="description">Four panels show a representative five-hertz '
+        f'laser-aligned response from {escape(session_id)}, overall optotagged-cell '
+        'yield, yield by major parent area, and the eighteen structures with the highest '
+        'mean yield.</desc>',
+        '<defs><linearGradient id="optotagging-z" x1="0" x2="1" y1="0" y2="0">'
+        '<stop offset="0" stop-color="#3B4CC0"/><stop offset="0.5" '
+        'stop-color="#F7F7F7"/><stop offset="1" stop-color="#B40426"/>'
+        '</linearGradient></defs>',
+        f'<rect width="{width}" height="{height}" fill="#FFFFFF"/>',
+    ]
+
+    append_optotagging_panel_heading(
+        svg,
+        label="A",
+        title=None,
+        x=35,
+        y=64,
+    )
+    plot_left, plot_top, plot_width, plot_height = 92, 116, 646, 265
+    svg.append(
+        f'<image href="data:image/png;base64,{heatmap_uri}" x="{plot_left}" '
+        f'y="{plot_top}" width="{plot_width}" height="{plot_height}" '
+        'preserveAspectRatio="none"/>'
+    )
+    time_start, time_end = metadata["time_seconds"]
+
+    def time_x(value: float) -> float:
+        return plot_left + (value - time_start) / (time_end - time_start) * plot_width
+
+    pulse_width = max(
+        3,
+        condition["pulse_width_seconds"] / (time_end - time_start) * plot_width,
+    )
+    for pulse_index in range(pulse_count):
+        pulse_x = time_x(pulse_index / condition["pulse_frequency_hz"])
+        svg.append(
+            f'<rect x="{pulse_x:.2f}" y="100" width="{pulse_width:.2f}" height="9" '
+            f'fill="{yield_color}"/>'
+        )
+    laser_x = time_x(0)
+    svg.extend(
+        [
+            f'<line x1="{laser_x:.2f}" y1="{plot_top}" x2="{laser_x:.2f}" '
+            f'y2="{plot_top + plot_height}" stroke="#263033" stroke-width="1.4" '
+            'stroke-dasharray="6 5"/>',
+            f'<rect x="{plot_left}" y="{plot_top}" width="{plot_width}" '
+            f'height="{plot_height}" fill="none" stroke="#69716F" stroke-width="1.2"/>',
+            f'<text x="48" y="{plot_top + plot_height / 2:.2f}" '
+            f'transform="rotate(-90 48 {plot_top + plot_height / 2:.2f})" '
+            f'text-anchor="middle" font-family="{FIGURE_SANS_FONT}" font-size="15" '
+            'fill="#303536">Units</text>',
+            f'<text x="82" y="{plot_top + 5}" text-anchor="end" '
+            f'font-family="{FIGURE_MONO_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+            'fill="#68706E">1</text>',
+            f'<text x="82" y="{plot_top + plot_height}" text-anchor="end" '
+            f'font-family="{FIGURE_MONO_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+            f'fill="#68706E">{metadata["unit_count"]:,}</text>',
+        ]
+    )
+    for tick in (-0.5, 0, 0.5, 1.0):
+        if not time_start <= tick <= time_end:
+            continue
+        tick_x = time_x(tick)
+        svg.extend(
+            [
+                f'<line x1="{tick_x:.2f}" y1="{plot_top + plot_height}" '
+                f'x2="{tick_x:.2f}" y2="{plot_top + plot_height + 7}" '
+                'stroke="#69716F" stroke-width="1.2"/>',
+                f'<text x="{tick_x:.2f}" y="{plot_top + plot_height + 23}" '
+                f'text-anchor="middle" font-family="{FIGURE_MONO_FONT}" '
+                f'font-size="{FIGURE_TYPE_SMALL}" fill="#68706E">{tick:g}</text>',
+            ]
+        )
+    svg.extend(
+        [
+            f'<text x="{plot_left + plot_width / 2:.2f}" y="419" text-anchor="middle" '
+            f'font-family="{FIGURE_SANS_FONT}" font-size="15" fill="#303536">'
+            'Time from laser onset (s)</text>',
+            '<rect x="92" y="438" width="245" height="12" fill="url(#optotagging-z)"/>',
+            f'<text x="92" y="466" text-anchor="middle" font-family="{FIGURE_MONO_FONT}" '
+            f'font-size="{FIGURE_TYPE_SMALL}" fill="#68706E">-3</text>',
+            f'<text x="214.5" y="466" text-anchor="middle" font-family="{FIGURE_MONO_FONT}" '
+            f'font-size="{FIGURE_TYPE_SMALL}" fill="#68706E">0</text>',
+            f'<text x="337" y="466" text-anchor="middle" font-family="{FIGURE_MONO_FONT}" '
+            f'font-size="{FIGURE_TYPE_SMALL}" fill="#68706E">+3</text>',
+            f'<text x="353" y="449" font-family="{FIGURE_SANS_FONT}" font-size="13" '
+            'fill="#303536">Baseline z score</text>',
+        ]
+    )
+
+    append_optotagging_panel_heading(
+        svg,
+        label="B",
+        title=None,
+        x=790,
+        y=64,
+    )
+    overall = summary["overall"]
+    overall_left, overall_right = 820, 1145
+    overall_top, overall_bottom = 126, 390
+    overall_max = max(20, math.ceil(max(overall["counts"]) / 20) * 20)
+    for tick in range(0, overall_max + 1, 20):
+        tick_x = overall_left + tick / overall_max * (overall_right - overall_left)
+        svg.extend(
+            [
+                f'<line x1="{tick_x:.2f}" y1="{overall_bottom}" x2="{tick_x:.2f}" '
+                f'y2="{overall_bottom + 6}" stroke="#69716F" stroke-width="1.2"/>',
+                f'<text x="{tick_x:.2f}" y="{overall_bottom + 19}" text-anchor="middle" '
+                f'font-family="{FIGURE_MONO_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+                f'fill="#68706E">{tick}</text>',
+            ]
+        )
+    for point_index, count in enumerate(overall["counts"]):
+        point_x = overall_left + count / overall_max * (overall_right - overall_left)
+        point_y = overall_top + 24 + ((point_index * 37) % 17) / 16 * (
+            overall_bottom - overall_top - 48
+        )
+        svg.append(
+            f'<circle cx="{point_x:.2f}" cy="{point_y:.2f}" r="3.1" '
+            'fill="#596663" fill-opacity="0.58"/>'
+        )
+    overall_mean_x = overall_left + overall["mean"] / overall_max * (
+        overall_right - overall_left
+    )
+    svg.extend(
+        [
+            f'<line x1="{overall_mean_x:.2f}" y1="{overall_top}" '
+            f'x2="{overall_mean_x:.2f}" y2="{overall_bottom}" '
+            f'stroke="{yield_color}" stroke-width="4"/>',
+            f'<text x="{overall_mean_x + 7:.2f}" y="{overall_top + 15}" '
+            f'font-family="{FIGURE_SANS_FONT}" font-size="13" font-weight="700" '
+            f'fill="{yield_color}">Mean {overall["mean"]:.1f}</text>',
+            f'<line x1="{overall_left}" y1="{overall_bottom}" x2="{overall_right}" '
+            f'y2="{overall_bottom}" stroke="#69716F" stroke-width="1.4"/>',
+            f'<text x="{(overall_left + overall_right) / 2:.2f}" y="427" '
+            f'text-anchor="middle" font-family="{FIGURE_SANS_FONT}" font-size="15" '
+            'fill="#303536">Optotagged cells per session</text>',
+        ]
+    )
+
+    append_optotagging_yield_panel(
+        svg,
+        summary["major_parent"],
+        label="C",
+        y_axis_label="Major parent area",
+        x=35,
+        y=500,
+        width=545,
+        height=430,
+        tick_step=10,
+        label_width=112,
+    )
+    top_structures = sorted(
+        summary["structures"],
+        key=lambda record: (-record["mean"], record["label"]),
+    )[:18]
+    append_optotagging_yield_panel(
+        svg,
+        top_structures,
+        label="D",
+        y_axis_label="Structure acronym",
+        x=620,
+        y=500,
+        width=545,
+        height=430,
+        tick_step=5,
+        label_width=104,
+        bar_height=8,
+        point_radius=1.7,
+    )
+    svg.append("</svg>")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    write_svg_output(output, svg)
+    return output
+
+
+def write_optotagging_heatmap_svg(
+    output: Path = OPTOTAGGING_HEATMAP_STATIC_OUTPUT,
+    data_path: Path = OPTOTAGGING_HEATMAP_DATA_PATH,
+    provenance_path: Path = OPTOTAGGING_HEATMAP_PROVENANCE_PATH,
+    media_dir: Path = OPTOTAGGING_HEATMAP_SOURCE_DIR,
+    static_source: Path | None = None,
+) -> Path:
+    """Copy the source static composite into the publication outputs."""
+
+    load_optotagging_heatmap_data(data_path, provenance_path, media_dir)
+    if static_source is None:
+        static_source = media_dir / OPTOTAGGING_STATIC_SOURCE.name
+    svg = static_source.read_text(encoding="utf-8")
+    required_text = (
+        "Optotagging response and yield summary",
+        "Major parent area",
+        "Structure acronym",
+    )
+    if "<svg" not in svg or any(text not in svg for text in required_text):
+        raise RuntimeError("Optotagging static composite does not match its source figure.")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(svg, encoding="utf-8", newline="\n")
+    return output
+
+
 def write_neuropixels_trajectory_html(
     output: Path = NEUROPIXELS_TRAJECTORY_INTERACTIVE_OUTPUT,
     static_output: Path = NEUROPIXELS_TRAJECTORY_STATIC_OUTPUT,
@@ -1392,9 +2150,7 @@ def write_neuropixels_trajectory_html(
     template = (JAVASCRIPT_DIR / "neuropixels-trajectories.html").read_text(
         encoding="utf-8"
     )
-    stylesheet = (JAVASCRIPT_DIR / "neuropixels-trajectories.css").read_text(
-        encoding="utf-8"
-    )
+    stylesheet = load_figure_stylesheet("neuropixels-trajectories.css")
     javascript = (JAVASCRIPT_DIR / "neuropixels-trajectories.js").read_text(
         encoding="utf-8"
     )
@@ -1690,9 +2446,9 @@ def write_eye_tracking_static_svg(
                     f'fill="#707674">{unit}</text>',
                     f'<text x="{plot_left + 6}" y="{top + 14}" '
                     'font-family="IBM Plex Mono, monospace" '
-                    f'font-size="10" fill="#707674">{high:.0f}</text>',
+                    f'font-size="{FIGURE_TYPE_SMALL}" fill="#707674">{high:.0f}</text>',
                     f'<text x="{plot_left + 6}" y="{top + trace_height - 5}" '
-                    'font-family="IBM Plex Mono, monospace" font-size="10" '
+                    f'font-family="IBM Plex Mono, monospace" font-size="{FIGURE_TYPE_SMALL}" '
                     f'fill="#707674">{low:.0f}</text>',
                 ]
             )
@@ -1727,7 +2483,7 @@ def write_eye_tracking_viewer_html(
     payload = load_eye_tracking_excerpts()
     write_eye_tracking_static_svg(static_output)
     template = (JAVASCRIPT_DIR / "eye-tracking-viewer.html").read_text(encoding="utf-8")
-    stylesheet = (JAVASCRIPT_DIR / "eye-tracking-viewer.css").read_text(encoding="utf-8")
+    stylesheet = load_figure_stylesheet("eye-tracking-viewer.css")
     javascript = (JAVASCRIPT_DIR / "eye-tracking-viewer.js").read_text(encoding="utf-8")
     html = (
         template.replace("__EYE_TRACKING_CSS__", stylesheet)
@@ -2381,7 +3137,7 @@ def write_behavior_viewer_html(
         session["logo"] = logo_data_uris[session["id"]]
     write_behavior_static_svg(static_output)
     template = (JAVASCRIPT_DIR / "behavior-viewer.html").read_text(encoding="utf-8")
-    stylesheet = (JAVASCRIPT_DIR / "behavior-viewer.css").read_text(encoding="utf-8")
+    stylesheet = load_figure_stylesheet("behavior-viewer.css")
     javascript = (JAVASCRIPT_DIR / "behavior-viewer.js").read_text(encoding="utf-8")
     html = (
         template.replace("__BEHAVIOR_CSS__", stylesheet)
@@ -2411,7 +3167,7 @@ def load_neural_excerpts(
 ) -> dict:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
-        payload.get("version") != 7
+        payload.get("version") != 8
         or payload.get("windowStartSeconds") != -1.0
         or payload.get("windowEndSeconds") != 3.0
         or not text_sha256_matches(
@@ -2500,8 +3256,17 @@ def load_neural_excerpts(
                         option.get("compositeAssetPath", "")
                     ).name
                     slap2_asset_valid = (
-                        option.get("frameWidth") == 640
-                        and option.get("frameHeight") == 400
+                        option.get("frameWidth") == 400
+                        and option.get("frameHeight") == 640
+                        and option.get("displayWidth") == 800
+                        and option.get("displayHeight") == 1280
+                        and option.get("nativeWidth") == 1280
+                        and option.get("nativeHeight") == 800
+                        and option.get("storedWidth") == 1280
+                        and option.get("storedHeight") == 800
+                        and option.get("displayTransform")
+                        == "transpose-for-publication"
+                        and option.get("fastScanAxis") == "vertical"
                         and option.get("spatialDownsampleFactor") == 2
                         and option.get("spriteEncoding") == "lossless WebP"
                         and composite_path.is_file()
@@ -2532,6 +3297,158 @@ def load_neural_excerpts(
     return payload
 
 
+def load_segmentation_viewers(
+    path: Path = SEGMENTATION_VIEWER_DATA_PATH,
+    provenance_path: Path = SEGMENTATION_VIEWER_PROVENANCE_PATH,
+) -> dict:
+    source_bytes = path.read_bytes()
+    payload = json.loads(source_bytes)
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    if (
+        payload.get("version") != 4
+        or hashlib.sha256(source_bytes).hexdigest() != provenance.get("vendored_sha256")
+        or hashlib.sha256(NEURAL_EXCERPTS_PATH.read_bytes()).hexdigest()
+        != provenance.get("source_raw_neural_sha256")
+    ):
+        raise RuntimeError("Segmentation viewer snapshot provenance is invalid.")
+
+    viewers = payload.get("viewers", [])
+    expected_sources = {
+        "neuropixels": {
+            "probe-a": 569,
+            "probe-b": 502,
+            "probe-c": 534,
+            "probe-d": 799,
+            "probe-e": 542,
+            "probe-f": 604,
+        },
+        "mesoscope": {
+            "visp_0": 399,
+            "visp_1": 463,
+            "visp_2": 70,
+            "visp_3": 277,
+            "visl_4": 374,
+            "visl_5": 356,
+            "visl_6": 124,
+            "visl_7": 321,
+        },
+        "slap2": {"dmd1": 45, "dmd2": 74},
+    }
+    if [viewer.get("id") for viewer in viewers] != list(expected_sources):
+        raise RuntimeError("Segmentation viewers must contain the three modalities in order.")
+    for modality in viewers:
+        modality_id = modality["id"]
+        expected_asset = provenance.get("assets", {}).get(modality_id)
+        if modality.get("asset") != expected_asset:
+            raise RuntimeError(f"Segmentation viewer DANDI asset changed: {modality_id}")
+        sources = modality.get("sources", [])
+        expected_counts = expected_sources[modality_id]
+        if [source.get("sourceId") for source in sources] != list(expected_counts):
+            raise RuntimeError(f"Segmentation source inventory changed: {modality_id}")
+        for source in sources:
+            source_id = source["sourceId"]
+            if modality_id != "neuropixels":
+                source["traceLabel"] = "ΔF/F (%)"
+                source["traceScale"] = 100
+                source["traceUnit"] = "%"
+            filter_count = expected_counts[source_id]
+            rows = source.get("traceRows")
+            columns = source.get("traceColumns")
+            try:
+                trace_data = base64.b64decode(
+                    source.get("traceDataBase64", ""),
+                    validate=True,
+                )
+            except ValueError as exc:
+                raise RuntimeError(
+                    f"Segmentation trace encoding is invalid: {modality_id}/{source_id}"
+                ) from exc
+            if (
+                source.get("asset") != expected_asset
+                or source.get("filterCount") != filter_count
+                or len(source.get("filters", [])) != filter_count
+                or rows != filter_count
+                or not isinstance(columns, int)
+                or columns < 100
+                or len(trace_data) != rows * columns * 4
+                or len(source.get("traceTimesSeconds", [])) != columns
+                or source["traceTimesSeconds"][0] < 0
+                or "activityImage" in source
+                or "eventLabel" in source
+                or "context" in source
+                or any(
+                    "snr" in record or "firingRateHz" in record
+                    for record in source.get("filters", [])
+                )
+            ):
+                raise RuntimeError(
+                    f"Segmentation source dimensions changed: {modality_id}/{source_id}"
+                )
+
+            if modality_id != "neuropixels" and (
+                source.get("fastScanAxis")
+                != ("horizontal" if modality_id == "mesoscope" else "vertical")
+                or source.get("displayTransform")
+                != ("stored-yx" if modality_id == "mesoscope" else "transpose-for-publication")
+            ):
+                raise RuntimeError(
+                    f"Segmentation scan orientation changed: {modality_id}/{source_id}"
+                )
+
+            for field in ("baseImage", "labelImage", "filterOverlay"):
+                record = source.get(field)
+                if not record:
+                    continue
+                media_path = REPO_ROOT / "figure_sources" / record["assetPath"]
+                expected_sha256 = provenance["vendored_media_sha256"].get(
+                    media_path.name
+                )
+                if (
+                    not media_path.is_file()
+                    or hashlib.sha256(media_path.read_bytes()).hexdigest()
+                    != record["sha256"]
+                    or record["sha256"] != expected_sha256
+                ):
+                    raise RuntimeError(
+                        f"Segmentation viewer media checksum changed: {media_path.name}"
+                    )
+
+            if modality_id != "neuropixels":
+                continue
+            waveform_columns = source.get("waveformColumns")
+            waveform_data = base64.b64decode(
+                source.get("waveformDataBase64", ""),
+                validate=True,
+            )
+            raw_data = base64.b64decode(
+                source.get("rawDataBase64", ""),
+                validate=True,
+            )
+            spike_events = source.get("spikeEvents", [])
+            if (
+                source.get("waveformRows") != filter_count
+                or waveform_columns != 210
+                or len(waveform_data) != filter_count * waveform_columns * 4
+                or source.get("viewType") != "spike-map"
+                or source.get("rawRows") != 96
+                or source.get("rawColumns") != 3000
+                or len(raw_data) != source["rawRows"] * source["rawColumns"]
+                or not spike_events
+                or any(
+                    event.get("filterIndex") not in range(filter_count)
+                    or event.get("row") not in range(source["rawRows"])
+                    or not source["rawTimeStartMs"]
+                    <= event.get("timeMs", -1)
+                    <= source["rawTimeEndMs"]
+                    for event in spike_events
+                )
+            ):
+                raise RuntimeError(
+                    f"Neuropixels spike-map dimensions changed: {source_id}"
+                )
+    return payload
+
+
 def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
     checksum = zlib.crc32(chunk_type)
     checksum = zlib.crc32(data, checksum)
@@ -2554,6 +3471,168 @@ def encode_rgb_png(width: int, height: int, pixels: bytes) -> bytes:
             png_chunk(b"IEND", b""),
         )
     )
+
+
+def paeth_predictor(left: int, above: int, upper_left: int) -> int:
+    estimate = left + above - upper_left
+    left_distance = abs(estimate - left)
+    above_distance = abs(estimate - above)
+    upper_left_distance = abs(estimate - upper_left)
+    if left_distance <= above_distance and left_distance <= upper_left_distance:
+        return left
+    if above_distance <= upper_left_distance:
+        return above
+    return upper_left
+
+
+def decode_rgb_png(path: Path) -> tuple[int, int, bytes]:
+    encoded = path.read_bytes()
+    if not encoded.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError(f"PNG signature is invalid: {path.name}")
+    position = 8
+    width = height = None
+    compressed = []
+    while position < len(encoded):
+        length = struct.unpack(">I", encoded[position : position + 4])[0]
+        chunk_type = encoded[position + 4 : position + 8]
+        chunk = encoded[position + 8 : position + 8 + length]
+        position += length + 12
+        if chunk_type == b"IHDR":
+            width, height, depth, color, compression, filtering, interlace = (
+                struct.unpack(">IIBBBBB", chunk)
+            )
+            if (depth, color, compression, filtering, interlace) != (8, 2, 0, 0, 0):
+                raise RuntimeError(f"PNG format is unsupported: {path.name}")
+        elif chunk_type == b"IDAT":
+            compressed.append(chunk)
+        elif chunk_type == b"IEND":
+            break
+    if width is None or height is None or not compressed:
+        raise RuntimeError(f"PNG data is incomplete: {path.name}")
+
+    raw = zlib.decompress(b"".join(compressed))
+    stride = width * 3
+    expected = height * (stride + 1)
+    if len(raw) != expected:
+        raise RuntimeError(f"PNG scanline length changed: {path.name}")
+    pixels = bytearray()
+    previous = bytearray(stride)
+    for row_index in range(height):
+        offset = row_index * (stride + 1)
+        filter_type = raw[offset]
+        scanline = bytearray(raw[offset + 1 : offset + stride + 1])
+        for index, value in enumerate(scanline):
+            left = scanline[index - 3] if index >= 3 else 0
+            above = previous[index]
+            upper_left = previous[index - 3] if index >= 3 else 0
+            if filter_type == 1:
+                value += left
+            elif filter_type == 2:
+                value += above
+            elif filter_type == 3:
+                value += (left + above) // 2
+            elif filter_type == 4:
+                value += paeth_predictor(left, above, upper_left)
+            elif filter_type != 0:
+                raise RuntimeError(f"PNG filter is unsupported: {filter_type}")
+            scanline[index] = value & 0xFF
+        pixels.extend(scanline)
+        previous = scanline
+    return width, height, bytes(pixels)
+
+
+def decode_grayscale_png(path: Path) -> tuple[int, int, bytes]:
+    encoded = path.read_bytes()
+    if not encoded.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise RuntimeError(f"PNG signature is invalid: {path.name}")
+    position = 8
+    width = height = None
+    compressed = []
+    while position < len(encoded):
+        length = struct.unpack(">I", encoded[position : position + 4])[0]
+        chunk_type = encoded[position + 4 : position + 8]
+        chunk = encoded[position + 8 : position + 8 + length]
+        position += length + 12
+        if chunk_type == b"IHDR":
+            width, height, depth, color, compression, filtering, interlace = (
+                struct.unpack(">IIBBBBB", chunk)
+            )
+            if (depth, color, compression, filtering, interlace) != (8, 0, 0, 0, 0):
+                raise RuntimeError(f"PNG format is unsupported: {path.name}")
+        elif chunk_type == b"IDAT":
+            compressed.append(chunk)
+        elif chunk_type == b"IEND":
+            break
+    if width is None or height is None or not compressed:
+        raise RuntimeError(f"PNG data is incomplete: {path.name}")
+
+    raw = zlib.decompress(b"".join(compressed))
+    stride = width
+    if len(raw) != height * (stride + 1):
+        raise RuntimeError(f"PNG scanline length changed: {path.name}")
+    pixels = bytearray()
+    previous = bytearray(stride)
+    for row_index in range(height):
+        offset = row_index * (stride + 1)
+        filter_type = raw[offset]
+        scanline = bytearray(raw[offset + 1 : offset + stride + 1])
+        for index, value in enumerate(scanline):
+            left = scanline[index - 1] if index else 0
+            above = previous[index]
+            upper_left = previous[index - 1] if index else 0
+            if filter_type == 1:
+                value += left
+            elif filter_type == 2:
+                value += above
+            elif filter_type == 3:
+                value += (left + above) // 2
+            elif filter_type == 4:
+                value += paeth_predictor(left, above, upper_left)
+            elif filter_type != 0:
+                raise RuntimeError(f"PNG filter is unsupported: {filter_type}")
+            scanline[index] = value & 0xFF
+        pixels.extend(scanline)
+        previous = scanline
+    return width, height, bytes(pixels)
+
+
+def represented_filter_fill_png(viewer: dict, indices: list[int]) -> bytes:
+    label_path = REPO_ROOT / "figure_sources" / viewer["labelImage"]["assetPath"]
+    width, height, labels = decode_rgb_png(label_path)
+    color_by_label = {
+        index + 1: SEGMENTATION_FILTER_COLORS[index % len(SEGMENTATION_FILTER_COLORS)]
+        for index in indices
+    }
+    pixels = bytearray(width * height * 4)
+    for pixel_index in range(width * height):
+        source = pixel_index * 3
+        label = labels[source] + (labels[source + 1] << 8) + (labels[source + 2] << 16)
+        color = color_by_label.get(label)
+        if color is None:
+            continue
+        target = pixel_index * 4
+        pixels[target : target + 4] = bytes((*color, 120))
+    return encode_rgba_png(width, height, bytes(pixels))
+
+
+def common_median_corrected_rgb(
+    raw: bytes,
+    rows: int,
+    columns: int,
+    contrast: float,
+) -> bytes:
+    if len(raw) != rows * columns:
+        raise RuntimeError("Raw AP buffer does not match its declared dimensions.")
+    common_mode = [
+        statistics.median(raw[column::columns])
+        for column in range(columns)
+    ]
+    rgb = bytearray(len(raw) * 3)
+    for index, value in enumerate(raw):
+        centered = value - common_mode[index % columns]
+        gray = max(0, min(255, round(127.5 + centered * contrast)))
+        rgb[index * 3 : index * 3 + 3] = bytes((gray, gray, gray))
+    return bytes(rgb)
 
 
 def encode_rgba_png(width: int, height: int, pixels: bytes) -> bytes:
@@ -2743,16 +3822,11 @@ def append_neuropixels_raw_card(
         [
             f'<g class="raw-image-card" data-modality="neuropixels" '
             f'data-option-id="{option["id"]}">',
-            f'<rect x="{x + 5:.2f}" y="{y + 6:.2f}" width="{card_width}" '
-            f'height="{card_height}" rx="3" fill="#D9DEDC" opacity="0.65"/>',
             f'<rect x="{x:.2f}" y="{y:.2f}" width="{card_width}" '
             f'height="{card_height}" rx="3" fill="#FFFFFF" stroke="#8F9996"/>',
             f'<text x="{x + 9:.2f}" y="{y + 19:.2f}" '
             'font-family="Source Sans 3, sans-serif" font-size="13" '
             f'font-weight="700" fill="#303536">{escape(option["label"])}</text>',
-            f'<text x="{x + card_width - 9:.2f}" y="{y + 19:.2f}" '
-            'font-family="IBM Plex Mono, monospace" font-size="10" '
-            f'text-anchor="end" fill="#59615F">±{option["valueLimit"]:.0f} µV</text>',
         ]
     )
     for index, segment in enumerate(option["anatomySegments"]):
@@ -2773,7 +3847,7 @@ def append_neuropixels_raw_card(
             svg.append(
                 f'<text x="{anatomy_x + anatomy_width / 2:.2f}" '
                 f'y="{segment_y + segment_height / 2 + 3:.2f}" '
-                'font-family="Source Sans 3, sans-serif" font-size="8" '
+            'font-family="Source Sans 3, sans-serif" font-size="8" '
                 f'font-weight="600" text-anchor="middle" fill="#3F4745">'
                 f'{escape(segment["label"])}</text>'
             )
@@ -2797,13 +3871,13 @@ def append_neuropixels_raw_card(
                     f'<line x1="{tick_x:.2f}" y1="{image_y + image_height:.2f}" '
                     f'x2="{tick_x:.2f}" y2="{axis_y:.2f}" stroke="#6C7572"/>',
                     f'<text x="{tick_x:.2f}" y="{axis_y + 13:.2f}" '
-                    'font-family="IBM Plex Mono, monospace" font-size="9" '
+                    f'font-family="IBM Plex Mono, monospace" font-size="{FIGURE_TYPE_SMALL}" '
                     f'text-anchor="middle" fill="#59615F">{milliseconds}</text>',
                 ]
             )
         svg.append(
             f'<text x="{heatmap_x + heatmap_width / 2:.2f}" y="{axis_y + 29:.2f}" '
-            'font-family="Source Sans 3, sans-serif" font-size="10" '
+            f'font-family="Source Sans 3, sans-serif" font-size="{FIGURE_TYPE_SMALL}" '
             'text-anchor="middle" fill="#4D5553">100 ms raw AP excerpt</text>'
         )
     svg.append("</g>")
@@ -2824,7 +3898,9 @@ def append_microscopy_raw_card(
     padding = 7
     header_height = 27
     image_width = card_width - 2 * padding
-    image_height = image_width * option["nativeHeight"] / option["nativeWidth"]
+    display_width = option.get("displayWidth", option["nativeWidth"])
+    display_height = option.get("displayHeight", option["nativeHeight"])
+    image_height = image_width * display_height / display_width
     card_height = header_height + image_height + padding
     image_x = x + padding
     image_y = y + header_height
@@ -2833,8 +3909,6 @@ def append_microscopy_raw_card(
         [
             f'<g class="raw-image-card" data-modality="{modality}" '
             f'data-option-id="{option["id"]}" data-card-width="{card_width:.0f}">',
-            f'<rect x="{x + 5:.2f}" y="{y + 6:.2f}" width="{card_width}" '
-            f'height="{card_height:.2f}" rx="3" fill="#D9DEDC" opacity="0.65"/>',
             f'<rect x="{x:.2f}" y="{y:.2f}" width="{card_width}" '
             f'height="{card_height:.2f}" rx="3" fill="#FFFFFF" stroke="#8F9996"/>',
             f'<text x="{x + padding:.2f}" y="{y + 18:.2f}" '
@@ -2853,7 +3927,7 @@ def append_microscopy_raw_card(
             x=image_x + 12,
             y=image_y + image_height - 14,
             display_width=image_width,
-            native_width=option["nativeWidth"],
+            native_width=display_width,
             microns_per_pixel=option["micronsPerPixel"],
             microns=50 if modality == "mesoscope" else 25,
         )
@@ -2972,13 +4046,13 @@ def write_neural_static_svg(output: Path = NEURAL_STATIC_OUTPUT) -> Path:
         depth = option["remoteFocusDepthBelowPiaUm"]
         append_microscopy_raw_card(
             svg,
-            x=1240 + index * 10,
-            y=detail_card_y + index * 205,
-            card_width=500,
+            x=1240 + index * 270,
+            y=detail_card_y,
+            card_width=265,
             option=option,
             path=frame_paths[("slap2", composite_id)],
             modality="slap2",
-            label=f"{dmd} · {depth:g} µm · green + red composite",
+            label=f"{dmd} · {depth:g} µm",
             show_scale=index == len(SLAP2_STATIC_COMPOSITES) - 1,
         )
     svg.append("</svg>")
@@ -3000,7 +4074,7 @@ def write_neural_viewer_html(
         for field in ("alignment", "context", "event", "stimulus"):
             session.pop(field, None)
     template = (JAVASCRIPT_DIR / "neural-viewer.html").read_text(encoding="utf-8")
-    stylesheet = (JAVASCRIPT_DIR / "neural-viewer.css").read_text(encoding="utf-8")
+    stylesheet = load_figure_stylesheet("neural-viewer.css")
     javascript = (JAVASCRIPT_DIR / "neural-viewer.js").read_text(encoding="utf-8")
     html = (
         template.replace("__NEURAL_CSS__", stylesheet)
@@ -3024,40 +4098,456 @@ def write_neural_viewer_html(
     return output
 
 
-def load_publication_table_data(manuscript_path: Path = REPO_ROOT / "index.md") -> dict:
-    manuscript = manuscript_path.read_text(encoding="utf-8")
-    pattern = re.compile(
-        r'<table class="publication-data-table table-(?P<kind>animals|sessions)".*?'
-        r'</table>',
-        re.DOTALL,
+def write_segmentation_viewer_html(
+    output: Path = SEGMENTATION_VIEWER_OUTPUT,
+    data_path: Path = SEGMENTATION_VIEWER_DATA_PATH,
+    provenance_path: Path = SEGMENTATION_VIEWER_PROVENANCE_PATH,
+    static_output: Path = SEGMENTATION_VIEWER_STATIC_OUTPUT,
+) -> Path:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    payload = load_segmentation_viewers(data_path, provenance_path)
+    logo_data_uris = platform_logo_data_uris()
+    for modality in payload["viewers"]:
+        modality["logo"] = logo_data_uris[modality["id"]]
+    template = (JAVASCRIPT_DIR / "segmentation-viewer.html").read_text(
+        encoding="utf-8"
     )
-    grouped_tables = {}
-    for match in pattern.finditer(manuscript):
-        kind = match.group("kind")
-        table = ET.fromstring(match.group())
-        header_rows = table.findall("./thead/tr")
-        headers = [" ".join("".join(cell.itertext()).split()) for cell in header_rows[-1]]
-        rows = []
-        for row in table.findall("./tbody/tr"):
-            values = [
-                cell.attrib.get("data-full-value")
-                or " ".join("".join(cell.itertext()).split())
-                for cell in row
-            ]
-            rows.append(
-                {
-                    "context": row.attrib.get("data-context", ""),
-                    "modality": row.attrib.get("data-modality", "other"),
-                    "values": values,
-                }
-            )
-        grouped_tables[kind] = {"headers": headers, "rows": rows}
-    if set(grouped_tables) != {"animals", "sessions"}:
-        raise RuntimeError("Expected animals and sessions tables in manuscript.")
+    stylesheet = load_figure_stylesheet("segmentation-viewer.css")
+    javascript = (JAVASCRIPT_DIR / "segmentation-viewer.js").read_text(
+        encoding="utf-8"
+    )
+    html = (
+        template.replace("__SEGMENTATION_CSS__", stylesheet)
+        .replace(
+            "__SEGMENTATION_STATIC_IMAGE__",
+            f"media/segmentation-viewers/{static_output.name}",
+        )
+        .replace("__SEGMENTATION_JS__", javascript)
+        .replace("__EMBED_AUTO_HEIGHT_JS__", load_embed_auto_height())
+        .replace(
+            "__SEGMENTATION_DATA__",
+            json.dumps(
+                payload,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ),
+        )
+    )
+    output.write_text(html, encoding="utf-8", newline="\n")
+    media_output = output.parent / "media" / "segmentation-viewers"
+    if media_output.exists():
+        shutil.rmtree(media_output)
+    shutil.copytree(SEGMENTATION_VIEWER_MEDIA_DIR, media_output)
+    shutil.copy2(static_output, media_output / static_output.name)
+    return output
 
-    summary_mouse_ids = split_grouped_identifiers(grouped_tables["animals"], count_index=4)
-    animal_table = load_individual_animal_table(summary_mouse_ids)
-    session_table = expand_individual_session_table(grouped_tables["sessions"])
+
+def segmentation_trace_rows(viewer: dict) -> list[list[float]]:
+    rows = viewer["traceRows"]
+    columns = viewer["traceColumns"]
+    encoded = base64.b64decode(viewer["traceDataBase64"], validate=True)
+    values = struct.unpack(f"<{rows * columns}f", encoded)
+    scale = viewer.get("traceScale", 1)
+    return [
+        [value * scale for value in values[index * columns : (index + 1) * columns]]
+        for index in range(rows)
+    ]
+
+
+def static_segmentation_trace_indices(
+    rows: list[list[float]],
+    count: int = 20,
+) -> list[int]:
+    active_indices = []
+    for index, values in enumerate(rows):
+        finite = [value for value in values if math.isfinite(value)]
+        if finite and max(finite) > min(finite):
+            active_indices.append(index)
+    if len(active_indices) <= count:
+        return active_indices
+    return [
+        active_indices[round(position * (len(active_indices) - 1) / (count - 1))]
+        for position in range(count)
+    ]
+
+
+def nice_trace_scale(value: float) -> float:
+    if not math.isfinite(value) or value <= 0:
+        return 1.0
+    magnitude = 10 ** math.floor(math.log10(value))
+    normalized = value / magnitude
+    factor = 5 if normalized >= 5 else 2 if normalized >= 2 else 1
+    return factor * magnitude
+
+
+def append_segmentation_trace_stack(
+    svg: list[str],
+    viewer: dict,
+    indices: list[int],
+    rows: list[list[float]],
+    *,
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+) -> None:
+    selected_rows = [rows[index] for index in indices]
+    finite = [
+        value for row in selected_rows for value in row if math.isfinite(value)
+    ]
+    minimum = min(finite)
+    maximum = max(finite)
+    if viewer["id"] == "neuropixels":
+        minimum = 0.0
+    if minimum == maximum:
+        maximum = minimum + 1
+    times = viewer["traceTimesSeconds"]
+    minimum_time = times[0]
+    maximum_time = times[-1]
+    plot_left = left + 94
+    plot_right = left + width - 18
+    traces_top = top + 8
+    scale_height = 38
+    row_height = (height - 8 - scale_height) / len(selected_rows)
+    trace_height = row_height * 0.62
+    vertical_gain = {"neuropixels": 1.0, "mesoscope": 3.0, "slap2": 2.0}[
+        viewer["id"]
+    ]
+
+    if vertical_gain > 1:
+        clip_paths = []
+        for row_position, index in enumerate(indices):
+            clip_paths.append(
+                f'<clipPath id="{viewer["id"]}-trace-{index}-clip">'
+                f'<rect x="{plot_left:.2f}" '
+                f'y="{traces_top + row_position * row_height:.2f}" '
+                f'width="{plot_right - plot_left:.2f}" height="{row_height:.2f}"/>'
+                "</clipPath>"
+            )
+        svg.append(f'<defs>{"".join(clip_paths)}</defs>')
+
+    for row_position, (index, values) in enumerate(
+        zip(indices, selected_rows, strict=True)
+    ):
+        row_top = traces_top + row_position * row_height
+        row_finite = sorted(value for value in values if math.isfinite(value))
+        middle = len(row_finite) // 2
+        row_median = (
+            row_finite[middle]
+            if len(row_finite) % 2
+            else (row_finite[middle - 1] + row_finite[middle]) / 2
+        )
+        commands = []
+        drawing = False
+        stride = max(1, math.ceil(len(values) / 900))
+        for sample_index in range(0, len(values), stride):
+            value = values[sample_index]
+            if not math.isfinite(value):
+                drawing = False
+                continue
+            horizontal = plot_left + (times[sample_index] - minimum_time) / (
+                maximum_time - minimum_time
+            ) * (plot_right - plot_left)
+            if vertical_gain > 1:
+                vertical = (
+                    row_top
+                    + row_height / 2
+                    + (row_median - value)
+                    / (maximum - minimum)
+                    * trace_height
+                    * vertical_gain
+                )
+            else:
+                vertical = (
+                    row_top
+                    + (maximum - value) / (maximum - minimum) * trace_height
+                )
+            commands.append(
+                f'{"L" if drawing else "M"}{horizontal:.2f},{vertical:.2f}'
+            )
+            drawing = True
+        color = SEGMENTATION_FILTER_COLORS[index % len(SEGMENTATION_FILTER_COLORS)]
+        stroke = f"#{color[0]:02X}{color[1]:02X}{color[2]:02X}"
+        clip_attribute = (
+            f'clip-path="url(#{viewer["id"]}-trace-{index}-clip)" '
+            if vertical_gain > 1
+            else ""
+        )
+        svg.extend(
+            [
+                f'<text x="{plot_left - 10:.2f}" y="{row_top + trace_height / 2 + 4:.2f}" '
+                f'text-anchor="end" font-family="{FIGURE_SANS_FONT}" '
+                f'font-size="{FIGURE_TYPE_SMALL}" fill="#4D5553">'
+                f'{escape(viewer["filters"][index]["label"])}</text>',
+                f'<path class="static-activity-trace" data-filter-index="{index}" '
+                f'data-vertical-gain="{vertical_gain:g}" '
+                f'{clip_attribute}'
+                f'd="{" ".join(commands)}" fill="none" stroke="{stroke}" '
+                'stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>',
+            ]
+        )
+
+    scale_y = top + height - 18
+    x_scale = 2.0 if viewer["id"] == "neuropixels" else 5.0
+    x_scale_width = x_scale / (maximum_time - minimum_time) * (
+        plot_right - plot_left
+    )
+    y_scale = nice_trace_scale((maximum - minimum) * 0.25)
+    y_scale_height = (
+        y_scale / (maximum - minimum) * trace_height * vertical_gain
+    )
+    scale_x = plot_left
+    unit = "Hz" if viewer["id"] == "neuropixels" else "%"
+    y_scale_label = f"{y_scale:g}%" if unit == "%" else f"{y_scale:g} {unit}"
+    svg.extend(
+        [
+            f'<line class="trace-scale-bar" x1="{scale_x:.2f}" y1="{scale_y:.2f}" '
+            f'x2="{scale_x + x_scale_width:.2f}" y2="{scale_y:.2f}" '
+            'stroke="#000000" stroke-width="4" stroke-linecap="square"/>',
+            f'<text x="{scale_x + x_scale_width / 2:.2f}" y="{scale_y + 18:.2f}" '
+            f'text-anchor="middle" font-family="{FIGURE_MONO_FONT}" '
+            f'font-size="{FIGURE_TYPE_SMALL}" fill="#000000">{x_scale:g} s</text>',
+            f'<line class="trace-scale-bar" x1="{scale_x:.2f}" '
+            f'y1="{scale_y:.2f}" x2="{scale_x:.2f}" '
+            f'y2="{scale_y - y_scale_height:.2f}" stroke="#000000" '
+            'stroke-width="4" stroke-linecap="square"/>',
+            f'<text x="{scale_x - 10:.2f}" y="{scale_y - y_scale_height - 7:.2f}" '
+            f'text-anchor="end" font-family="{FIGURE_MONO_FONT}" '
+            f'font-size="{FIGURE_TYPE_SMALL}" fill="#000000">{y_scale_label}</text>',
+        ]
+    )
+
+
+def write_segmentation_viewer_svg(
+    modality: str,
+    output: Path | None = None,
+    data_path: Path = SEGMENTATION_VIEWER_DATA_PATH,
+    provenance_path: Path = SEGMENTATION_VIEWER_PROVENANCE_PATH,
+) -> Path:
+    if modality not in SEGMENTATION_VIEWER_STATIC_OUTPUTS:
+        raise ValueError(f"Unsupported segmentation viewer modality: {modality}")
+    output = output or SEGMENTATION_VIEWER_STATIC_OUTPUTS[modality]
+    payload = load_segmentation_viewers(data_path, provenance_path)
+    modality_record = next(
+        record for record in payload["viewers"] if record["id"] == modality
+    )
+    viewer = modality_record["sources"][0]
+    trace_rows = segmentation_trace_rows(viewer)
+    trace_indices = static_segmentation_trace_indices(trace_rows)
+    represented_filters = set(trace_indices)
+    left_panel_label, right_panel_label = SEGMENTATION_PANEL_LABELS[modality]
+    logo_data = base64.b64encode(load_platform_logos()[modality].read_bytes()).decode()
+    svg = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" '
+        'viewBox="0 0 1400 760" role="img" aria-labelledby="title description">',
+        f'<title id="title">{escape(SEGMENTATION_VIEWER_TITLES[modality])}</title>',
+        '<desc id="description">A source projection shows all extraction filters; '
+        'twenty representative filters are paired with vertically stacked activity traces.</desc>',
+        '<rect width="1400" height="760" fill="#FFFFFF"/>',
+        f'<image class="static-modality-logo" data-modality="{modality}" '
+        f'href="data:image/png;base64,{logo_data}" x="52" y="10" '
+        'width="54" height="54"/>',
+        f'<text x="52" y="85" font-family="{FIGURE_SANS_FONT}" font-size="20" '
+        f'font-weight="700" fill="#293133">{left_panel_label}</text>',
+        f'<text x="755" y="85" font-family="{FIGURE_SANS_FONT}" font-size="20" '
+        f'font-weight="700" fill="#293133">{right_panel_label}</text>',
+    ]
+
+    visual_left = 78.0
+    visual_top = 100.0
+    visual_width = 620.0
+    visual_height = 590.0
+    if modality == "neuropixels":
+        raw = base64.b64decode(viewer["rawDataBase64"], validate=True)
+        rgb = common_median_corrected_rgb(
+            raw,
+            viewer["rawRows"],
+            viewer["rawColumns"],
+            1.2,
+        )
+        raw_image = base64.b64encode(
+            encode_rgb_png(viewer["rawColumns"], viewer["rawRows"], rgb)
+        ).decode()
+        image_x = visual_left + 46
+        image_y = visual_top + 20
+        image_width = visual_width - 56
+        image_height = visual_height - 58
+
+        def spike_x(time_ms: float) -> float:
+            return image_x + (time_ms - viewer["rawTimeStartMs"]) / (
+                viewer["rawTimeEndMs"] - viewer["rawTimeStartMs"]
+            ) * image_width
+
+        def spike_y(row: float) -> float:
+            return image_y + (row + 0.5) / viewer["rawRows"] * image_height
+
+        svg.extend(
+            [
+                f'<image href="data:image/png;base64,{raw_image}" x="{image_x:.2f}" '
+                f'y="{image_y:.2f}" width="{image_width:.2f}" '
+                f'height="{image_height:.2f}" preserveAspectRatio="none"/>',
+            ]
+        )
+        for event in viewer["spikeEvents"]:
+            is_represented = event["filterIndex"] in represented_filters
+            color = SEGMENTATION_FILTER_COLORS[
+                event["filterIndex"] % len(SEGMENTATION_FILTER_COLORS)
+            ]
+            fill = f"#{color[0]:02X}{color[1]:02X}{color[2]:02X}"
+            svg.append(
+                f'<circle cx="{spike_x(event["timeMs"]):.2f}" '
+                f'cy="{spike_y(event["row"]):.2f}" '
+                f'r="{3.7 if is_represented else 2.1}" fill="{fill}" '
+                f'fill-opacity="{1 if is_represented else 0.82}" '
+                f'stroke="{"#FFFFFF" if is_represented else "none"}" '
+                f'stroke-width="{1.2 if is_represented else 0}"/>'
+            )
+        svg.append(
+            f'<rect x="{image_x:.2f}" y="{image_y:.2f}" width="{image_width:.2f}" '
+            f'height="{image_height:.2f}" fill="none" stroke="#68716F"/>'
+        )
+        for index in range(5):
+            fraction = index / 4
+            vertical = image_y + fraction * image_height
+            depth = viewer["rawDepthMaxUm"] - fraction * (
+                viewer["rawDepthMaxUm"] - viewer["rawDepthMinUm"]
+            )
+            horizontal = image_x + fraction * image_width
+            time_ms = viewer["rawTimeStartMs"] + fraction * (
+                viewer["rawTimeEndMs"] - viewer["rawTimeStartMs"]
+            )
+            svg.extend(
+                [
+                    f'<line x1="{image_x - 6:.2f}" y1="{vertical:.2f}" '
+                    f'x2="{image_x:.2f}" y2="{vertical:.2f}" stroke="#68716F"/>',
+                    f'<text x="{image_x - 8:.2f}" y="{vertical + 4:.2f}" '
+                    f'text-anchor="end" font-family="{FIGURE_MONO_FONT}" '
+                    f'font-size="{FIGURE_TYPE_SMALL}" fill="#68716F">{depth:.0f}</text>',
+                    f'<line x1="{horizontal:.2f}" y1="{image_y + image_height:.2f}" '
+                    f'x2="{horizontal:.2f}" y2="{image_y + image_height + 6:.2f}" '
+                    'stroke="#68716F"/>',
+                    f'<text x="{horizontal:.2f}" y="{image_y + image_height + 18:.2f}" '
+                    f'text-anchor="middle" font-family="{FIGURE_MONO_FONT}" '
+                    f'font-size="{FIGURE_TYPE_SMALL}" fill="#68716F">{time_ms:.0f}</text>',
+                ]
+            )
+        svg.extend(
+            [
+                f'<text x="{image_x + image_width / 2:.2f}" '
+                f'y="{image_y + image_height + 34:.2f}" text-anchor="middle" '
+                f'font-family="{FIGURE_SANS_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
+                'font-weight="600" fill="#68716F">Excerpt time (ms)</text>',
+                f'<text x="{image_x:.2f}" y="{image_y - 8:.2f}" '
+                f'text-anchor="start" font-family="{FIGURE_SANS_FONT}" '
+                f'font-size="{FIGURE_TYPE_SMALL}" font-weight="600" '
+                'fill="#68716F">Probe length from tip (µm)</text>',
+            ]
+        )
+    else:
+        base_path = REPO_ROOT / "figure_sources" / viewer["baseImage"]["assetPath"]
+        overlay_path = (
+            REPO_ROOT / "figure_sources" / viewer["filterOverlay"]["assetPath"]
+        )
+        source_width = viewer["baseImage"]["width"]
+        source_height = viewer["baseImage"]["height"]
+        scale = min(visual_width / source_width, visual_height / source_height)
+        rendered_width = source_width * scale
+        rendered_height = source_height * scale
+        image_x = visual_left + (visual_width - rendered_width) / 2
+        image_y = visual_top + (visual_height - rendered_height) / 2
+
+        def image_uri(path: Path) -> str:
+            return base64.b64encode(path.read_bytes()).decode()
+
+        svg.append(
+            f'<image href="data:image/png;base64,{image_uri(base_path)}" '
+            f'x="{image_x:.2f}" y="{image_y:.2f}" width="{rendered_width:.2f}" '
+            f'height="{rendered_height:.2f}"/>'
+        )
+        represented_fill = base64.b64encode(
+            represented_filter_fill_png(viewer, trace_indices)
+        ).decode()
+        svg.extend(
+            [
+                f'<image class="represented-filter-fills" '
+                f'data-filter-indices="{",".join(map(str, trace_indices))}" '
+                f'href="data:image/png;base64,{represented_fill}" x="{image_x:.2f}" '
+                f'y="{image_y:.2f}" width="{rendered_width:.2f}" '
+                f'height="{rendered_height:.2f}"/>',
+                f'<image href="data:image/png;base64,{image_uri(overlay_path)}" '
+                f'x="{image_x:.2f}" y="{image_y:.2f}" width="{rendered_width:.2f}" '
+                f'height="{rendered_height:.2f}"/>',
+            ]
+        )
+        scale_microns = 25 if modality == "slap2" else 50
+        scale_width = scale_microns / viewer["micronsPerPixel"] * scale
+        scale_x = image_x + rendered_width - scale_width - 17
+        scale_y = image_y + rendered_height - 18
+        svg.extend(
+            [
+                f'<line x1="{scale_x:.2f}" y1="{scale_y:.2f}" '
+                f'x2="{scale_x + scale_width:.2f}" y2="{scale_y:.2f}" '
+                'stroke="#FFFFFF" stroke-width="4"/>',
+                f'<text x="{scale_x + scale_width / 2:.2f}" y="{scale_y - 8:.2f}" '
+                f'text-anchor="middle" font-family="{FIGURE_SANS_FONT}" '
+                f'font-size="{FIGURE_TYPE_SMALL}" font-weight="700" fill="#FFFFFF">'
+                f'{scale_microns} µm</text>',
+            ]
+        )
+
+    append_segmentation_trace_stack(
+        svg,
+        viewer,
+        trace_indices,
+        trace_rows,
+        left=774,
+        top=116,
+        width=548,
+        height=548,
+    )
+    svg.append("</svg>")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    write_svg_output(output, svg)
+    return output
+
+
+def write_segmentation_viewer_static_svg(
+    output: Path = SEGMENTATION_VIEWER_STATIC_OUTPUT,
+    static_outputs: dict[str, Path] | None = None,
+) -> Path:
+    static_outputs = static_outputs or SEGMENTATION_VIEWER_STATIC_OUTPUTS
+    panel_height = 760
+    panels = []
+    for index, (modality, panel_path) in enumerate(static_outputs.items()):
+        panel_path = write_segmentation_viewer_svg(modality, panel_path)
+        encoded = base64.b64encode(panel_path.read_bytes()).decode()
+        panels.append(
+            f'<image href="data:image/svg+xml;base64,{encoded}" x="0" '
+            f'y="{index * panel_height}" width="1400" height="{panel_height}"/>'
+        )
+    svg = [
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="2280" '
+        'viewBox="0 0 1400 2280" role="img" aria-labelledby="title description">',
+        '<title id="title">Unit extraction across recording modalities</title>',
+        '<desc id="description">Neuropixels, mesoscope, and SLAP2 panels show '
+        'representative extraction filters with twenty stacked activity traces.</desc>',
+        *panels,
+        "</svg>",
+    ]
+    output.parent.mkdir(parents=True, exist_ok=True)
+    write_svg_output(output, svg)
+    return output
+
+
+def write_segmentation_viewers() -> Path:
+    write_segmentation_viewer_static_svg(SEGMENTATION_VIEWER_STATIC_OUTPUT)
+    return write_segmentation_viewer_html(SEGMENTATION_VIEWER_OUTPUT)
+
+
+def load_publication_table_data() -> dict:
+    animal_table = load_individual_animal_table()
+    session_table = load_individual_session_table()
     data_access_table = load_data_access_table()
     return {
         "tables": {
@@ -3174,21 +4664,6 @@ def load_data_access_table(
     }
 
 
-def split_grouped_identifiers(table: dict, count_index: int) -> set[str]:
-    identifiers = []
-    for row in table["rows"]:
-        row_ids = [value.strip() for value in row["values"][-1].split(",") if value.strip()]
-        declared_count = int(row["values"][count_index].split()[0])
-        if declared_count != len(row_ids):
-            raise RuntimeError(
-                f"Declared count {declared_count} does not match {len(row_ids)} identifiers."
-            )
-        identifiers.extend(row_ids)
-    if len(identifiers) != len(set(identifiers)):
-        raise RuntimeError("Grouped table contains duplicate identifiers.")
-    return set(identifiers)
-
-
 def normalized_text_bytes(path: Path) -> bytes:
     """Read text bytes with platform-specific line endings normalized to LF."""
     data = path.read_bytes()
@@ -3203,7 +4678,7 @@ def text_sha256_matches(path: Path, expected: str) -> bool:
     return any(hashlib.sha256(candidate).hexdigest() == expected for candidate in candidates)
 
 
-def load_individual_animal_table(summary_mouse_ids: set[str]) -> dict:
+def load_individual_animal_table() -> dict:
     modality_lookup = {
         "MESO": ("mesoscope", "Two-photon mesoscope"),
         "EPHYS": ("neuropixels", "Neuropixels"),
@@ -3225,18 +4700,15 @@ def load_individual_animal_table(summary_mouse_ids: set[str]) -> dict:
         sex = source["Sex"].strip()
         if not sex or sex == "?":
             sex = "Unknown"
-        included = "Yes" if mouse_id in summary_mouse_ids else "No"
         details = [
             {"label": "Genotype / preparation", "value": source["Transgenic details"].strip()},
             {"label": "Virus(es)", "value": source["Virus(es)"].strip()},
             {"label": "Birth date", "value": source["Birth date"].strip()},
             {"label": "Surgery date(s)", "value": source["Surgery date(s)"].strip()},
             {"label": "Notes", "value": source["Notes"].strip()},
-            {"label": "Included in grouped manuscript table", "value": included},
         ]
         details = [detail for detail in details if detail["value"]]
         csv_values = [source[header] for header in source]
-        csv_values.append(included)
         rows.append(
             {
                 "context": "",
@@ -3252,11 +4724,8 @@ def load_individual_animal_table(summary_mouse_ids: set[str]) -> dict:
     mouse_ids = [row["values"][0] for row in rows]
     if len(mouse_ids) != len(set(mouse_ids)):
         raise RuntimeError("Animal worksheet contains duplicate mouse IDs.")
-    if not summary_mouse_ids.issubset(mouse_ids):
-        missing = sorted(summary_mouse_ids - set(mouse_ids))
-        raise RuntimeError(f"Animal worksheet is missing manuscript mouse IDs: {missing}")
     return {
-        "csvHeaders": [*source_rows[0].keys(), "Included in grouped manuscript table"],
+        "csvHeaders": list(source_rows[0]),
         "detailsColumn": 4,
         "headers": ["Mouse ID", "Modality", "Sex", "QC", "Metadata"],
         "rows": rows,
@@ -3426,32 +4895,47 @@ def load_neuropixels_trajectory_data(
     return payload
 
 
-def expand_individual_session_table(grouped_table: dict) -> dict:
+def load_individual_session_table(
+    data_path: Path = SESSION_RECORDS_PATH,
+    provenance_path: Path = SESSION_RECORDS_PROVENANCE_PATH,
+) -> dict:
+    payload = load_experimental_session_records(data_path, provenance_path)
+    modality_labels = {
+        "mesoscope": "Two-photon mesoscope",
+        "neuropixels": "Neuropixels",
+        "slap2": "SLAP2",
+    }
     rows = []
-    session_ids = split_grouped_identifiers(grouped_table, count_index=2)
-    for group in grouped_table["rows"]:
-        modality_label, context_label = group["values"][:2]
-        for session_id in [
-            value.strip() for value in group["values"][-1].split(",") if value.strip()
-        ]:
-            mouse_id, session_date = session_id.split("_", maxsplit=1)
-            values = [session_id, mouse_id, session_date, modality_label, context_label]
-            rows.append(
-                {
-                    "context": group["context"],
-                    "csvValues": values,
-                    "details": [],
-                    "modality": group["modality"],
-                    "qc": "",
-                    "values": values,
-                }
-            )
+    for record in payload["records"]:
+        session_id = record["source_session_id"].strip()
+        if record["qc"].strip().casefold() != "pass" or session_id in {"", "aborted"}:
+            continue
+        modality = record["modality"]
+        context = session_context(record)
+        values = [
+            session_id,
+            record["mouse_id"],
+            record["date"],
+            modality_labels[modality],
+            SESSION_CONTEXT_LABELS[context],
+        ]
+        rows.append(
+            {
+                "context": context,
+                "csvValues": [record[header] for header in record],
+                "details": [],
+                "modality": modality,
+                "qc": "pass",
+                "values": values,
+            }
+        )
     rows.sort(key=lambda row: (row["values"][2], row["values"][0]))
-    if {row["values"][0] for row in rows} != session_ids:
-        raise RuntimeError("Expanded session IDs do not match grouped session IDs.")
+    session_ids = [row["values"][0] for row in rows]
+    if len(session_ids) != len(set(session_ids)):
+        raise RuntimeError("Passing session records contain duplicate session IDs.")
     headers = ["Session ID", "Mouse ID", "Date", "Modality", "Context"]
     return {
-        "csvHeaders": headers,
+        "csvHeaders": list(payload["records"][0]) if payload["records"] else [],
         "detailsColumn": None,
         "headers": headers,
         "rows": rows,
@@ -3471,6 +4955,32 @@ SESSION_CONTEXT_LABELS = {
     "sequence": "Sequence",
     "duration": "Duration",
     "other/pilot": "Pilot / other",
+}
+SESSION_QC_TAGS = (
+    ("pilot session", "Pilot session"),
+    ("missing running", "Missing running"),
+    ("high frequency noise contamination", "High-frequency noise contamination"),
+    ("z-drift", "Z-drift"),
+    ("motion correction failure", "Motion correction problems"),
+    ("cell matching", "Cell matching problems"),
+    ("slap2 stopped early", "SLAP2 stopped early"),
+    ("blood at insertion", "Blood at insertion site"),
+    ("mouse stress", "Mouse stress"),
+    ("mouse suspected asleep", "Mouse suspected asleep"),
+    (
+        "1 probe excluded for saturation events",
+        "One probe excluded for saturation events",
+    ),
+)
+SESSION_QC_TAG_NUMBERS = {
+    tag: index for index, (tag, _) in enumerate(SESSION_QC_TAGS, start=1)
+}
+SESSION_QC_TAG_ALIASES = {
+    "1 probe excluded": "1 probe excluded for saturation events",
+    "cell matching failure": "cell matching",
+    "motion correction": "motion correction failure",
+    "mouse asleep": "mouse suspected asleep",
+    "zdrift": "z-drift",
 }
 SESSION_ORDER = {
     1: ("sensorimotor", "standard oddball", "sequence", "duration"),
@@ -3523,24 +5033,39 @@ def normalized_session_stimulus(record: dict) -> str:
 def session_qc_kind(record: dict | None, modality: str) -> str:
     if record is None:
         return "missing"
-    qc = record["qc"].lower()
-    if modality == "neuropixels":
-        if "session fail" in qc:
-            return "session-fail"
-        if "fail" in qc:
-            return "probe-fail"
-    elif modality == "mesoscope" and "fail" in qc:
+    qc = record["qc"].strip().casefold()
+    if qc == "fail":
         return "session-fail"
-    elif modality == "slap2":
-        if "motion correction" in qc:
-            return "motion"
-        if "stressed" in qc:
-            return "stressed"
-        if "asleep" in qc:
-            return "asleep"
-        if "stopped" in qc:
-            return "stopped"
     return "ok"
+
+
+def normalized_session_qc_tags(record: dict | None) -> list[str]:
+    if record is None:
+        return []
+    tags = []
+    for raw_tag in record.get("qc_tags", "").split(","):
+        tag = raw_tag.strip().casefold()
+        if tag in {"", "-", "?"}:
+            continue
+        tag = SESSION_QC_TAG_ALIASES.get(tag, tag)
+        if tag not in SESSION_QC_TAG_NUMBERS:
+            raise RuntimeError(f"Unsupported session QC tag: {raw_tag.strip()}")
+        if tag not in tags:
+            tags.append(tag)
+    return tags
+
+
+def session_qc_tag_numbers(
+    record: dict | None,
+    tag_numbers: dict[str, int] | None = None,
+) -> list[int]:
+    tag_numbers = tag_numbers or SESSION_QC_TAG_NUMBERS
+    numbers = [
+        tag_numbers[tag]
+        for tag in normalized_session_qc_tags(record)
+        if tag in tag_numbers
+    ]
+    return sorted(numbers)
 
 
 def session_context(record: dict) -> str:
@@ -3626,6 +5151,12 @@ def session_panel_rows(records: list[dict], modality: str) -> list[dict]:
                 {"context": session_context(record), "record": record}
                 for record in mouse_records
             ]
+        if sessions and all(
+            session["record"] is not None
+            and session["record"]["qc"].strip().casefold() == "fail"
+            for session in sessions
+        ):
+            continue
         rows.append(
             {
                 "cohort": cohort,
@@ -3639,15 +5170,6 @@ def session_panel_rows(records: list[dict], modality: str) -> list[dict]:
     return rows
 
 
-def svg_star(cx: float, cy: float, outer: float = 7, inner: float = 3) -> str:
-    points = []
-    for index in range(10):
-        angle = -math.pi / 2 + index * math.pi / 5
-        radius = outer if index % 2 == 0 else inner
-        points.append(f"{cx + math.cos(angle) * radius:.2f},{cy + math.sin(angle) * radius:.2f}")
-    return " ".join(points)
-
-
 def append_session_block(
     svg: list[str],
     *,
@@ -3657,44 +5179,70 @@ def append_session_block(
     height: float,
     context: str,
     qc_kind: str,
+    qc_tag_numbers: list[int] | None = None,
     element_class: str | None = None,
     overlays: list[str] | None = None,
 ) -> None:
     color = SESSION_CONTEXT_COLORS[context]
     class_attribute = f' class="{element_class}"' if element_class else ""
-    border_colors = {
-        "missing": "#FF0000",
-        "session-fail": "#FF0000",
-        "motion": "#FF0000",
-        "stressed": "#FF69B4",
-        "asleep": "#32CD32",
-        "stopped": "#F5C400",
-    }
-    if qc_kind in border_colors:
+    block_inset = 1.5
+    block_x = x + block_inset
+    block_y = y + block_inset
+    block_width = width - 2 * block_inset
+    block_height = height - 2 * block_inset
+    if qc_kind == "session-fail":
         svg.append(
-            f'<rect{class_attribute} x="{x:.2f}" y="{y:.2f}" '
-            f'width="{width:.2f}" height="{height:.2f}" '
-            f'fill="url(#hatch-{context.replace("/", "-").replace(" ", "-")})" '
-            'stroke="#FFFFFF" stroke-width="1"/>'
+            f'<rect{class_attribute} x="{block_x:.2f}" y="{block_y:.2f}" '
+            f'width="{block_width:.2f}" height="{block_height:.2f}" fill="none" '
+            f'stroke="{color}" stroke-width="2"/>'
         )
         overlay_target = overlays if overlays is not None else svg
         overlay_target.append(
             f'<rect class="session-qc-outline" data-qc-kind="{qc_kind}" '
-            f'x="{x:.2f}" y="{y:.2f}" width="{width:.2f}" height="{height:.2f}" '
-            f'fill="none" stroke="{border_colors[qc_kind]}" stroke-width="2"/>'
+            f'x="{block_x:.2f}" y="{block_y:.2f}" '
+            f'width="{block_width:.2f}" height="{block_height:.2f}" '
+            f'fill="none" stroke="{color}" stroke-width="2"/>'
+        )
+    elif qc_kind == "missing":
+        svg.append(
+            f'<rect{class_attribute} x="{block_x:.2f}" y="{block_y:.2f}" '
+            f'width="{block_width:.2f}" height="{block_height:.2f}" fill="#FFFFFF" '
+            'stroke="#8A9290" stroke-width="1.5" stroke-dasharray="3 2"/>'
         )
     else:
         svg.append(
-            f'<rect{class_attribute} x="{x:.2f}" y="{y:.2f}" '
-            f'width="{width:.2f}" height="{height:.2f}" '
-            f'fill="{color}" stroke="#FFFFFF" stroke-width="1"/>'
+            f'<rect{class_attribute} x="{block_x:.2f}" y="{block_y:.2f}" '
+            f'width="{block_width:.2f}" height="{block_height:.2f}" '
+            f'fill="{color}" stroke="{color}" stroke-width="2"/>'
         )
-    if qc_kind == "probe-fail":
+    if qc_tag_numbers:
         overlay_target = overlays if overlays is not None else svg
-        overlay_target.append(
-            f'<polygon points="{svg_star(x + width / 2, y + height / 2)}" '
-            'fill="#FFFFFF" stroke="#222829" stroke-width="1"/>'
+        label = ",".join(str(number) for number in qc_tag_numbers)
+        center_x = x + width / 2
+        number_fill = "#000000" if qc_kind == "session-fail" else "#FFFFFF"
+        number_stroke = "#FFFFFF" if qc_kind == "session-fail" else "#000000"
+        text_style = (
+            'text-anchor="middle" font-family="IBM Plex Mono, monospace" '
+            f'font-weight="700" fill="{number_fill}" stroke="{number_stroke}" '
+            'stroke-width="1" paint-order="stroke"'
         )
+        if len(qc_tag_numbers) > 3:
+            first_line = ",".join(str(number) for number in qc_tag_numbers[:3])
+            second_line = ",".join(str(number) for number in qc_tag_numbers[3:])
+            overlay_target.append(
+                f'<text class="session-qc-tags" data-qc-tags="{label}" '
+                f'font-size="{FIGURE_TYPE_SMALL}" {text_style}>'
+                f'<tspan x="{center_x:.2f}" y="{y + height / 2 - 1.25:.2f}">'
+                f'{first_line}</tspan>'
+                f'<tspan x="{center_x:.2f}" y="{y + height / 2 + 7.25:.2f}">'
+                f'{second_line}</tspan></text>'
+            )
+        else:
+            overlay_target.append(
+                f'<text class="session-qc-tags" data-qc-tags="{label}" '
+                f'x="{center_x:.2f}" y="{y + height / 2 + 3.6:.2f}" '
+                f'font-size="{FIGURE_TYPE_SMALL}" {text_style}>{label}</text>'
+            )
 
 
 def write_session_inventory_svg(
@@ -3705,11 +5253,11 @@ def write_session_inventory_svg(
     records = payload["records"]
     panel_specs = (
         ("A", "Neuropixels", "neuropixels", 28),
-        ("B", "Mesoscope", "mesoscope", 38),
-        ("C", "SLAP2", "slap2", 38),
+        ("B", "Mesoscope", "mesoscope", 28),
+        ("C", "SLAP2", "slap2", 28),
     )
     width = 1150
-    height = 640
+    height = 680
     panel_gap = 75
     chart_top = 85
     chart_bottom = 570
@@ -3722,6 +5270,25 @@ def write_session_inventory_svg(
         modality: session_panel_rows(records, modality)
         for _, _, modality, _ in panel_specs
     }
+    active_qc_tags = {
+        tag
+        for rows in panel_rows.values()
+        for row in rows
+        for session in row["sessions"]
+        for tag in normalized_session_qc_tags(session["record"])
+    }
+    displayed_qc_tags = tuple(
+        tag_record for tag_record in SESSION_QC_TAGS if tag_record[0] in active_qc_tags
+    )
+    displayed_qc_tag_numbers = {
+        tag: index for index, (tag, _) in enumerate(displayed_qc_tags, start=1)
+    }
+    has_missing_sessions = any(
+        session["record"] is None
+        for rows in panel_rows.values()
+        for row in rows
+        for session in row["sessions"]
+    )
     global_max_sessions = max(
         len(row["sessions"])
         for rows in panel_rows.values()
@@ -3757,24 +5324,7 @@ def write_session_inventory_svg(
         'mesoscope, and SLAP2 mice, grouped by predictive-processing cohort and annotated '
         'with session quality-control status.</desc>',
         f'<rect width="{width}" height="{height}" fill="#FFFFFF"/>',
-        "<defs>",
     ]
-    for context, color in SESSION_CONTEXT_COLORS.items():
-        pattern_id = context.replace("/", "-").replace(" ", "-")
-        svg.append(
-            f'<pattern id="hatch-{pattern_id}" width="8" height="8" '
-            'patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'
-            '<rect width="8" height="8" fill="#FFFFFF"/>'
-            f'<line x1="0" y1="0" x2="0" y2="8" stroke="{color}" stroke-width="3"/>'
-            "</pattern>"
-        )
-    svg.append(
-        '<pattern id="hatch-qc" width="8" height="8" patternUnits="userSpaceOnUse" '
-        'patternTransform="rotate(45)"><rect width="8" height="8" fill="#FFFFFF"/>'
-        '<line x1="0" y1="0" x2="0" y2="8" stroke="#666666" stroke-width="3"/>'
-        "</pattern>"
-    )
-    svg.append("</defs>")
 
     for (panel_letter, panel_title, modality, row_step), panel_left in zip(
         panel_specs, panel_lefts, strict=True
@@ -3821,11 +5371,12 @@ def write_session_inventory_svg(
         y = chart_top
         for row in rows:
             if row["cohort"] != previous_cohort:
-                y += 18
+                y += row_step
                 previous_cohort = row["cohort"]
             y_positions.append(y)
             svg.append(
-                f'<text x="{panel_left + chart_offset - 12}" y="{y + 4:.2f}" '
+                f'<text class="mouse-id" data-modality="{modality}" '
+                f'x="{panel_left + chart_offset - 12}" y="{y + 4:.2f}" '
                 'font-family="IBM Plex Mono, monospace" font-size="12" '
                 f'text-anchor="end" fill="#4D5553">{escape(row["mouseId"])}</text>'
             )
@@ -3840,6 +5391,9 @@ def write_session_inventory_svg(
                     height=bar_height,
                     context=session["context"],
                     qc_kind=session_qc_kind(record, modality),
+                    qc_tag_numbers=session_qc_tag_numbers(
+                        record, displayed_qc_tag_numbers
+                    ),
                     element_class="session-block",
                     overlays=session_overlays,
                 )
@@ -3860,7 +5414,7 @@ def write_session_inventory_svg(
                         f'<line x1="{x:.2f}" y1="{chart_bottom}" x2="{x:.2f}" '
                         f'y2="{chart_bottom + 6}" stroke="#69716F" stroke-width="1"/>',
                         f'<text x="{x:.2f}" y="{chart_bottom + 23}" '
-                        'font-family="IBM Plex Mono, monospace" font-size="11" '
+                        f'font-family="IBM Plex Mono, monospace" font-size="{FIGURE_TYPE_SMALL}" '
                         f'text-anchor="middle" fill="#68706E">{tick_value}</text>',
                     ]
                 )
@@ -3874,7 +5428,7 @@ def write_session_inventory_svg(
     svg.extend(
         [
             '<g id="session-inventory-legend" '
-            f'transform="translate({panel_lefts[1] + chart_offset:.2f} 480)" '
+            'transform="translate(310 421)" '
             'aria-label="Session type and quality-control legend">',
             '<text x="0" y="13" font-family="Source Sans 3, sans-serif" '
             'font-size="13" font-weight="700" fill="#4D5553">Session type</text>',
@@ -3894,44 +5448,57 @@ def write_session_inventory_svg(
                 f"{escape(SESSION_CONTEXT_LABELS[context_name])}</text>",
             ]
         )
-    svg.append(
-        '<text x="0" y="55" font-family="Source Sans 3, sans-serif" '
-        'font-size="13" font-weight="700" fill="#4D5553">Quality control</text>'
+    svg.extend(
+        [
+            '<text x="0" y="55" font-family="Source Sans 3, sans-serif" '
+            'font-size="13" font-weight="700" fill="#4D5553">Quality control</text>',
+            '<rect x="120" y="42" width="24" height="16" fill="none" '
+            'stroke="#69716F" stroke-width="2"/>',
+            '<text x="152" y="55" font-family="Source Sans 3, sans-serif" '
+            'font-size="12" fill="#68706E">Failed session (type-colored border)</text>',
+            '<text x="0" y="86" font-family="Source Sans 3, sans-serif" '
+            'font-size="13" font-weight="700" fill="#4D5553">QC tags</text>',
+        ]
     )
-    qc_items = (
-        (120, 42, "#FF0000", "Missing / failed session"),
-        (520, 42, "#FF0000", "Motion correction partially failed"),
-        (120, 77, "#FF69B4", "Mouse stressed"),
-        (340, 77, "#32CD32", "Mouse asleep"),
-        (520, 77, "#F5C400", "SLAP2 stopped halfway"),
-    )
-    for x, y, color, label in qc_items:
+    if has_missing_sessions:
         svg.extend(
             [
-                f'<rect x="{x}" y="{y}" width="24" height="16" '
-                f'fill="url(#hatch-qc)" stroke="{color}" stroke-width="2"/>',
-                f'<text x="{x + 32}" y="{y + 13}" '
+                '<rect x="300" y="42" width="24" height="16" fill="#FFFFFF" '
+                'stroke="#8A9290" stroke-width="1.5" stroke-dasharray="3 2"/>',
+                '<text x="332" y="55" font-family="Source Sans 3, sans-serif" '
+                'font-size="12" fill="#68706E">Missing expected session</text>',
+            ]
+        )
+    legend_columns = (120, 322, 524)
+    for index, (_, label) in enumerate(displayed_qc_tags, start=1):
+        column = (index - 1) % len(legend_columns)
+        row = (index - 1) // len(legend_columns)
+        x = legend_columns[column]
+        y = 73 + row * 22
+        svg.extend(
+            [
+                f'<text x="{x + 9}" y="{y + 10}" text-anchor="middle" '
+                f'font-family="IBM Plex Mono, monospace" font-size="{FIGURE_TYPE_SMALL}" '
+                f'font-weight="700" fill="#293133">{index}</text>',
+                f'<text x="{x + 22}" y="{y + 11}" '
                 'font-family="Source Sans 3, sans-serif" '
                 f'font-size="12" fill="#68706E">{label}</text>',
             ]
         )
-    append_session_block(
-        svg,
-        x=340,
-        y=42,
-        width=24,
-        height=16,
-        context="sensorimotor",
-        qc_kind="probe-fail",
-    )
     svg.extend(
         [
-            '<text x="372" y="55" font-family="Source Sans 3, sans-serif" '
-            'font-size="12" fill="#68706E">One probe failed</text>',
             "</g>",
             "</svg>",
         ]
     )
+    svg = [
+        re.sub(
+            r'(<text\b(?![^>]*class="session-qc-tags")[^>]*\bfill=")#[0-9A-Fa-f]{6}(")',
+            r"\g<1>#000000\g<2>",
+            element,
+        )
+        for element in svg
+    ]
     output.parent.mkdir(parents=True, exist_ok=True)
     write_svg_output(output, svg)
     return output
@@ -3983,7 +5550,7 @@ def write_static_svg(output: Path = STATIC_OUTPUT) -> Path:
             if block_width >= 80:
                 svg.append(
                     f'<text x="{x + block_width / 2:.2f}" y="{y + 27}" '
-                    f'font-family="{FIGURE_SANS_FONT}" font-size="11" '
+                    f'font-family="{FIGURE_SANS_FONT}" font-size="{FIGURE_TYPE_SMALL}" '
                     f'text-anchor="middle" fill="#172126">{escape(block.name)}</text>'
                 )
             x += block_width
@@ -4011,26 +5578,6 @@ def write_static_svg(output: Path = STATIC_OUTPUT) -> Path:
     return output
 
 
-UNIT_YIELD_COLORS = (
-    "#087F8C",
-    "#C65D13",
-    "#3157B7",
-    "#8A4F9E",
-    "#4E7B32",
-    "#A47C00",
-    "#B33C2E",
-    "#377D6A",
-    "#6D5D9B",
-    "#A24B72",
-    "#53758C",
-    "#7A6A2F",
-    "#3E6F41",
-    "#985B35",
-    "#4F65A8",
-    "#7F556D",
-)
-
-
 def write_unit_yield_svg(
     output: Path = UNIT_YIELD_STATIC_OUTPUT,
     data_path: Path = UNIT_YIELD_DATA_PATH,
@@ -4048,8 +5595,7 @@ def write_unit_yield_svg(
     plot_height = height - top - bottom
     days = sorted({record["day"] for record in records})
     min_day, max_day = min(days), max(days)
-    maximum = max(record["percentOfDay1"] for record in records)
-    y_max = max(120, math.ceil(maximum / 20) * 20)
+    y_max = 140
 
     def x_position(day: int) -> float:
         if min_day == max_day:
@@ -4060,10 +5606,6 @@ def write_unit_yield_svg(
         return top + plot_height - value / y_max * plot_height
 
     mouse_ids = sorted({record["mouse_id"] for record in records})
-    color_by_mouse = {
-        mouse_id: UNIT_YIELD_COLORS[index % len(UNIT_YIELD_COLORS)]
-        for index, mouse_id in enumerate(mouse_ids)
-    }
     records_by_mouse = {
         mouse_id: [record for record in records if record["mouse_id"] == mouse_id]
         for mouse_id in mouse_ids
@@ -4083,13 +5625,12 @@ def write_unit_yield_svg(
         'fill="#68706E">Each mouse is normalized to its day-1 QC units per probe</text>',
     ]
 
-    tick_step = 20 if y_max <= 200 else 40
-    for value in range(0, y_max + 1, tick_step):
+    for value in range(0, y_max + 1, 20):
         y = y_position(value)
         svg.extend(
             [
-                f'<line x1="{left}" y1="{y:.2f}" x2="{width - right}" y2="{y:.2f}" '
-                'stroke="#E2E5E4" stroke-width="1"/>',
+                f'<line x1="{left - 7}" y1="{y:.2f}" x2="{left}" y2="{y:.2f}" '
+                'stroke="#69716F" stroke-width="1.5"/>',
                 f'<text x="{left - 14}" y="{y + 5:.2f}" text-anchor="end" '
                 'font-family="Source Sans 3, sans-serif" font-size="13" '
                 f'fill="#68706E">{value}</text>',
@@ -4103,21 +5644,20 @@ def write_unit_yield_svg(
         'stroke-dasharray="7 6"/>'
     )
 
-    for mouse_id, mouse_records in records_by_mouse.items():
+    for mouse_records in records_by_mouse.values():
         points = " ".join(
             f'{x_position(record["day"]):.2f},{y_position(record["percentOfDay1"]):.2f}'
             for record in mouse_records
         )
-        color = color_by_mouse[mouse_id]
         svg.append(
-            f'<polyline points="{points}" fill="none" stroke="{color}" stroke-width="2" '
-            'stroke-opacity="0.52"/>'
+            f'<polyline points="{points}" fill="none" stroke="#9AA29F" '
+            'stroke-width="1.5" stroke-opacity="0.62"/>'
         )
         for record in mouse_records:
             svg.append(
                 f'<circle cx="{x_position(record["day"]):.2f}" '
                 f'cy="{y_position(record["percentOfDay1"]):.2f}" r="4" '
-                f'fill="{color}" fill-opacity="0.72"/>'
+                'fill="#9AA29F" fill-opacity="0.72"/>'
             )
 
     mean_points = " ".join(
@@ -4167,9 +5707,9 @@ def write_unit_yield_svg(
             'stroke-width="2"/>',
             '<text x="952" y="48" font-family="Source Sans 3, sans-serif" '
             'font-size="14" fill="#303536">Daily mean</text>',
-            '<line x1="1055" y1="43" x2="1093" y2="43" stroke="#53758C" '
-            'stroke-width="2" stroke-opacity="0.65"/>',
-            '<circle cx="1074" cy="43" r="4" fill="#53758C"/>',
+            '<line x1="1055" y1="43" x2="1093" y2="43" stroke="#9AA29F" '
+            'stroke-width="1.5" stroke-opacity="0.72"/>',
+            '<circle cx="1074" cy="43" r="4" fill="#9AA29F"/>',
             '<text x="1102" y="48" font-family="Source Sans 3, sans-serif" '
             'font-size="14" fill="#303536">Mouse</text>',
             "</svg>",
@@ -4217,7 +5757,7 @@ def ccf_static_view_axes(
     tuple[float, float, float],
 ]:
     if view == "dorsal":
-        return (1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)
+        return (-1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)
     if view != "oblique":
         raise RuntimeError(f"Unsupported static CCF view: {view}")
     toward_camera = normalized_vector((11_200.0, 7_300.0, 11_600.0))
@@ -4393,7 +5933,7 @@ def write_neuropixels_trajectory_svg(
     def atlas_coordinates(point: list[int]) -> tuple[float, float, float]:
         anterior_posterior, dorsal_ventral, medial_lateral = point
         return (
-            medial_lateral - center[2],
+            center[2] - medial_lateral,
             center[1] - dorsal_ventral,
             center[0] - anterior_posterior,
         )
@@ -4585,8 +6125,12 @@ def main() -> None:
     behavior_viewer_path = write_behavior_viewer_html()
     eye_tracking_viewer_path = write_eye_tracking_viewer_html()
     neural_viewer_path = write_neural_viewer_html()
+    segmentation_viewer_path = write_segmentation_viewers()
     unit_yield_html_path = write_unit_yield_html()
     trajectory_html_path = write_neuropixels_trajectory_html()
+    optotagging_source_path = write_optotagging_static_source()
+    optotagging_html_path = write_optotagging_heatmap_html()
+    optotagging_svg_path = OPTOTAGGING_HEATMAP_STATIC_OUTPUT
     svg_path = write_static_svg()
     unit_yield_svg_path = write_unit_yield_svg()
     print(f"Wrote {merged_figure_1_path.relative_to(REPO_ROOT)}")
@@ -4605,9 +6149,14 @@ def main() -> None:
     print(f"Wrote {eye_tracking_viewer_path.relative_to(REPO_ROOT)}")
     print(f"Wrote {neural_viewer_path.relative_to(REPO_ROOT)}")
     print(f"Wrote {NEURAL_STATIC_OUTPUT.relative_to(REPO_ROOT)}")
+    print(f"Wrote {segmentation_viewer_path.relative_to(REPO_ROOT)}")
+    print(f"Wrote {SEGMENTATION_VIEWER_STATIC_OUTPUT.relative_to(REPO_ROOT)}")
     print(f"Wrote {unit_yield_html_path.relative_to(REPO_ROOT)}")
     print(f"Wrote {trajectory_html_path.relative_to(REPO_ROOT)}")
     print(f"Wrote {NEUROPIXELS_TRAJECTORY_STATIC_OUTPUT.relative_to(REPO_ROOT)}")
+    print(f"Wrote {optotagging_source_path.relative_to(REPO_ROOT)}")
+    print(f"Wrote {optotagging_html_path.relative_to(REPO_ROOT)}")
+    print(f"Wrote {optotagging_svg_path.relative_to(REPO_ROOT)}")
     print(f"Wrote {svg_path.relative_to(REPO_ROOT)}")
     print(f"Wrote {unit_yield_svg_path.relative_to(REPO_ROOT)}")
 
