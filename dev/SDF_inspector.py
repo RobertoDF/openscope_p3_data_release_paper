@@ -233,7 +233,6 @@ def dashboard_controls(CONDITION_LABELS, SDF_PARENT_AREAS, SESSION_PATHS, mo):
         label="Include parent areas",
         full_width=True,
     )
-
     return (
         baseline_picker,
         condition_picker,
@@ -472,44 +471,162 @@ def interactive_plot(
         _axis.set_xlim(-0.5, 1.0)
 
     else:
-        _heat_ids, _time, _matrix = load_heatmap(
-            selected_session_dir, _selected_condition, int(heatmap_size_picker.value)
-        )
-        if _baseline:
-            _matrix = baseline_correct(_time, _matrix)
-        _response_mask = (_time >= 0) & (_time <= 0.5)
-        _baseline_mask = _time < 0
-        _scores = _matrix[:, _response_mask].mean(axis=1)
-        if not _baseline:
-            _scores -= _matrix[:, _baseline_mask].mean(axis=1)
-        _order = np.argsort(_scores)[::-1]
-        _matrix = _matrix[_order]
-        _heat_ids = _heat_ids[_order]
-        _figure, _axis = plt.subplots(figsize=(12, 7.2), layout="constrained")
-        if _baseline:
-            _limit = max(float(np.nanpercentile(np.abs(_matrix), 98)), 1e-6)
-            _image = _axis.imshow(
-                _matrix, aspect="auto", interpolation="nearest",
-                extent=[_time[0], _time[-1], len(_matrix), 0],
-                cmap="RdBu_r", vmin=-_limit, vmax=_limit,
+        if trace_stratify_toggle.value:
+            _stratify_column = {
+                "Parent area": "parent_area",
+                "Structure acronym": "structure_acronym",
+                "Neuron type": "neuron_type",
+            }[trace_stratify_picker.value]
+            _facet_units = selected_units.loc[
+                selected_units["parent_area"].isin(trace_parent_areas_picker.value)
+            ].dropna(subset=[_stratify_column])
+            _facet_counts = _facet_units[_stratify_column].value_counts()
+            _facet_levels = _facet_counts.loc[
+                _facet_counts >= MIN_CELLS_PER_SESSION
+            ].index.tolist()
+            _facet_levels = sorted(
+                _facet_levels,
+                key=lambda level: (-int(_facet_counts[level]), str(level)),
             )
-            _colorbar_label = "Baseline-corrected SDF (Hz)"
+
+            if _facet_levels:
+                _all_ids, _time, _all_traces = load_condition_matrix(
+                    selected_session_dir, _selected_condition
+                )
+                _column_count = 2 if len(_facet_levels) > 4 else 1
+                _row_count = int(np.ceil(len(_facet_levels) / _column_count))
+                _figure, _axes = plt.subplots(
+                    _row_count,
+                    _column_count,
+                    figsize=(14 if _column_count == 2 else 12, 3.2 * _row_count),
+                    sharex=True,
+                    squeeze=False,
+                    layout="constrained",
+                )
+                _axes_flat = _axes.ravel()
+                _facet_payloads = []
+                for _facet_level in _facet_levels:
+                    _facet_metadata = _facet_units.loc[
+                        _facet_units[_stratify_column] == _facet_level
+                    ].nlargest(int(heatmap_size_picker.value), "firing_rate")
+                    _facet_ids = _facet_metadata["unit_id"].astype(int).to_numpy()
+                    _facet_mask = np.isin(_all_ids, _facet_ids)
+                    _facet_matrix = _all_traces[_facet_mask]
+                    if _baseline:
+                        _facet_matrix = baseline_correct(_time, _facet_matrix)
+                    _response_mask = (_time >= 0) & (_time <= 0.5)
+                    _baseline_mask = _time < 0
+                    _scores = _facet_matrix[:, _response_mask].mean(axis=1)
+                    if not _baseline:
+                        _scores -= _facet_matrix[:, _baseline_mask].mean(axis=1)
+                    _facet_matrix = _facet_matrix[np.argsort(_scores)[::-1]]
+                    _facet_payloads.append((_facet_level, _facet_matrix))
+
+                if _baseline:
+                    _limit = max(
+                        float(
+                            np.nanpercentile(
+                                np.abs(np.concatenate([payload[1] for payload in _facet_payloads])),
+                                98,
+                            )
+                        ),
+                        1e-6,
+                    )
+                    _image_kwargs = {"cmap": "RdBu_r", "vmin": -_limit, "vmax": _limit}
+                    _colorbar_label = "Baseline-corrected SDF (Hz)"
+                else:
+                    _upper = max(
+                        float(
+                            np.nanpercentile(
+                                np.concatenate([payload[1] for payload in _facet_payloads]),
+                                99,
+                            )
+                        ),
+                        1e-6,
+                    )
+                    _image_kwargs = {"cmap": "magma", "vmin": 0, "vmax": _upper}
+                    _colorbar_label = "SDF (Hz)"
+
+                for _facet_index, (_facet_level, _facet_matrix) in enumerate(_facet_payloads):
+                    _axis = _axes_flat[_facet_index]
+                    _image = _axis.imshow(
+                        _facet_matrix,
+                        aspect="auto",
+                        interpolation="nearest",
+                        extent=[_time[0], _time[-1], len(_facet_matrix), 0],
+                        **_image_kwargs,
+                    )
+                    _axis.axvline(0, color="white", lw=1.1, ls="--")
+                    _axis.axvline(MISMATCH_DURATION_S, color="white", lw=0.9, ls=":")
+                    _axis.set(
+                        xlim=(-0.5, 1.0),
+                        xlabel="Time from mismatch onset (s)",
+                        ylabel="Units ranked by 0-500 ms response",
+                        title=f"{_facet_level} | n={len(_facet_matrix):,}",
+                    )
+                for _unused_axis in _axes_flat[len(_facet_levels):]:
+                    _unused_axis.set_visible(False)
+                _figure.colorbar(
+                    _image,
+                    ax=[axis for axis in _axes_flat[:len(_facet_levels)]],
+                    label=_colorbar_label,
+                    shrink=0.86,
+                )
+                _figure.suptitle(
+                    f"{CONDITION_LABELS[_selected_condition]} heatmaps faceted by "
+                    f"{trace_stratify_picker.value.lower()} | Mouse {selected_session['subject']}",
+                    fontsize=14,
+                )
+            else:
+                _figure, _axis = plt.subplots(figsize=(12, 4), layout="constrained")
+                _axis.text(
+                    0.5,
+                    0.5,
+                    "No selected strata contain at least 5 units in this session",
+                    ha="center",
+                    va="center",
+                    transform=_axis.transAxes,
+                )
+                _axis.set_axis_off()
         else:
-            _upper = max(float(np.nanpercentile(_matrix, 99)), 1e-6)
-            _image = _axis.imshow(
-                _matrix, aspect="auto", interpolation="nearest",
-                extent=[_time[0], _time[-1], len(_matrix), 0],
-                cmap="magma", vmin=0, vmax=_upper,
+            _heat_ids, _time, _matrix = load_heatmap(
+                selected_session_dir, _selected_condition, int(heatmap_size_picker.value)
             )
-            _colorbar_label = "SDF (Hz)"
-        _axis.axvline(0, color="white", lw=1.1, ls="--")
-        _axis.axvline(MISMATCH_DURATION_S, color="white", lw=0.9, ls=":")
-        _axis.set(
-            xlim=(-0.5, 1.0), xlabel="Time from mismatch onset (s)",
-            ylabel="Units ranked by 0-500 ms response",
-            title=f"{CONDITION_LABELS[_selected_condition]} heatmap | Mouse {selected_session['subject']}",
-        )
-        _figure.colorbar(_image, ax=_axis, label=_colorbar_label, shrink=0.86)
+            if _baseline:
+                _matrix = baseline_correct(_time, _matrix)
+            _response_mask = (_time >= 0) & (_time <= 0.5)
+            _baseline_mask = _time < 0
+            _scores = _matrix[:, _response_mask].mean(axis=1)
+            if not _baseline:
+                _scores -= _matrix[:, _baseline_mask].mean(axis=1)
+            _order = np.argsort(_scores)[::-1]
+            _matrix = _matrix[_order]
+            _heat_ids = _heat_ids[_order]
+            _figure, _axis = plt.subplots(figsize=(12, 7.2), layout="constrained")
+            if _baseline:
+                _limit = max(float(np.nanpercentile(np.abs(_matrix), 98)), 1e-6)
+                _image = _axis.imshow(
+                    _matrix, aspect="auto", interpolation="nearest",
+                    extent=[_time[0], _time[-1], len(_matrix), 0],
+                    cmap="RdBu_r", vmin=-_limit, vmax=_limit,
+                )
+                _colorbar_label = "Baseline-corrected SDF (Hz)"
+            else:
+                _upper = max(float(np.nanpercentile(_matrix, 99)), 1e-6)
+                _image = _axis.imshow(
+                    _matrix, aspect="auto", interpolation="nearest",
+                    extent=[_time[0], _time[-1], len(_matrix), 0],
+                    cmap="magma", vmin=0, vmax=_upper,
+                )
+                _colorbar_label = "SDF (Hz)"
+            _axis.axvline(0, color="white", lw=1.1, ls="--")
+            _axis.axvline(MISMATCH_DURATION_S, color="white", lw=0.9, ls=":")
+            _axis.set(
+                xlim=(-0.5, 1.0), xlabel="Time from mismatch onset (s)",
+                ylabel="Units ranked by 0-500 ms response",
+                title=f"{CONDITION_LABELS[_selected_condition]} heatmap | Mouse {selected_session['subject']}",
+            )
+            _figure.colorbar(_image, ax=_axis, label=_colorbar_label, shrink=0.86)
 
     mo.vstack([
         mo.hstack([session_picker, condition_picker], widths=[2, 1]),
@@ -519,7 +636,6 @@ def interactive_plot(
         mo.hstack([trace_stratify_toggle, trace_stratify_picker]),
         trace_parent_areas_picker,_figure
     ], gap=1.2)
-
     return
 
 
