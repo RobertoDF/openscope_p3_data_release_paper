@@ -151,7 +151,7 @@ function render() {
         line: {color: metadata.color, width: 2.2},
         legendgroup: condition,
         showlegend: areaIndex === 0,
-        hovertemplate: `${area}<br>${metadata.label}<br>%{x:.3f} s<br>%{y:.2f} Hz<extra></extra>`
+        hovertemplate: `${area}<br>${metadata.label}<br>%{x:.3f} s<br>%{y:.2f} spikes/s<extra></extra>`
       });
     }
 
@@ -163,7 +163,9 @@ function render() {
     };
     layout[`yaxis${axisSuffix}`] = {
       title: areaIndex % columns === 0
-        ? (subtractBaseline ? "Baseline-corrected SDF (Hz)" : "SDF (Hz)")
+        ? (subtractBaseline
+            ? "Baseline-corrected firing rate (spikes/s)"
+            : "Firing rate (spikes/s)")
         : "",
       autorange: true,
       zeroline: true,
