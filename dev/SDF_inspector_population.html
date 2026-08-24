@@ -157,17 +157,24 @@ function render() {
 
     const axisSuffix = suffix;
     layout[`xaxis${axisSuffix}`] = {
-      title: areaIndex >= areas.length - columns ? "Time from mismatch onset (s)" : "",
+      title: {text: "Time (s)", standoff: 8},
       autorange: true,
+      showticklabels: true,
+      ticks: "outside",
+      automargin: true,
       zeroline: false
     };
     layout[`yaxis${axisSuffix}`] = {
-      title: areaIndex % columns === 0
-        ? (subtractBaseline
-            ? "Baseline-corrected firing rate (spikes/s)"
-            : "Firing rate (spikes/s)")
-        : "",
+      title: {
+        text: subtractBaseline
+          ? "Baseline-corrected firing rate (spikes/s)"
+          : "Firing rate (spikes/s)",
+        standoff: 8
+      },
       autorange: true,
+      showticklabels: true,
+      ticks: "outside",
+      automargin: true,
       zeroline: true,
       zerolinecolor: "#94a3b8"
     };
