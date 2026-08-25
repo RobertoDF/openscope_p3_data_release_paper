@@ -17,7 +17,15 @@
     .toggle { display: flex; gap: 8px; align-items: center; min-height: 38px; white-space: nowrap; }
     #plot { min-height: 650px; margin-top: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px #0f172a0d; }
     .note { margin: 10px 2px 0; color: #64748b; font-size: .8rem; }
-    @media (max-width: 760px) { .controls { grid-template-columns: 1fr; align-items: start; } #plot { min-height: 520px; } main { padding: 12px; } }
+    @media (max-width: 760px) {
+      main { padding: 12px; }
+      h1 { font-size: 1.2rem; }
+      .page-nav { line-height: 1.7; }
+      .controls { grid-template-columns: 1fr; align-items: start; gap: 10px; padding: 12px; }
+      .toggle { white-space: normal; }
+      select { min-height: 44px; }
+      #plot { min-height: 520px; }
+    }
   </style>
 </head>
 <body>
@@ -41,11 +49,35 @@ const sessionSelect = document.getElementById("session");
 const parentAreaToggle = document.getElementById("parent-area");
 const baselineToggle = document.getElementById("baseline");
 const semToggle = document.getElementById("sem");
+const COHORT_BY_MOUSE = {
+  "820454": "Motor cohort",
+  "820459": "Motor cohort",
+  "830794": "Motor cohort",
+  "830795": "Motor cohort",
+  "830846": "Sequence cohort",
+  "830847": "Sequence cohort",
+  "830848": "Sequence cohort",
+  "830849": "Sequence cohort",
+  "830851": "Motor cohort",
+  "830852": "Motor cohort",
+  "832691": "Sequence cohort",
+  "834686": "Sequence cohort",
+  "834687": "Sequence cohort",
+  "834691": "Motor cohort",
+  "848387": "Motor cohort",
+  "848390": "Motor cohort"
+};
+
+function displaySessionLabel(label) {
+  const mouseId = label.match(/^Mouse (\d+)/)?.[1];
+  const cohort = COHORT_BY_MOUSE[mouseId];
+  return cohort ? `${label} | ${cohort}` : label;
+}
 
 for (const label of Object.keys(DATA.sessions)) {
   const option = document.createElement("option");
   option.value = label;
-  option.textContent = label;
+  option.textContent = displaySessionLabel(label);
   sessionSelect.appendChild(option);
 }
 
@@ -59,6 +91,8 @@ function rgba(hex, alpha) {
 
 function render() {
   const sessionLabel = sessionSelect.value;
+  const displayLabel = displaySessionLabel(sessionLabel);
+  const mobile = window.matchMedia("(max-width: 760px)").matches;
   const separateByParentArea = parentAreaToggle.checked;
   const firstCondition = Object.keys(DATA.conditions)[0];
   const session = separateByParentArea
@@ -78,29 +112,42 @@ function render() {
       session[second][firstCondition].unit_count -
       session[first][firstCondition].unit_count
   );
-  const columns = areas.length > 4 ? 2 : 1;
+  const columns = !mobile && areas.length > 4 ? 2 : 1;
   const rows = Math.ceil(areas.length / columns);
   const layout = {
     title: {
       text: separateByParentArea
-        ? `${sessionLabel} — population responses by parent area`
-        : `${sessionLabel} — population response`,
+        ? `${displayLabel} — population responses by parent area`
+        : `${displayLabel} — population response`,
       x: 0.01,
-      xanchor: "left"
+      xanchor: "left",
+      font: {size: mobile ? 14 : 17}
     },
     grid: {rows, columns, pattern: "independent", roworder: "top to bottom"},
     hovermode: "closest",
     template: "plotly_white",
-    height: Math.max(650, rows * 320),
-    margin: {l: 75, r: 245, t: 105, b: 75},
-    legend: {
-      orientation: "v",
-      x: 1.01,
-      xanchor: "left",
-      y: 1,
-      yanchor: "top",
-      bgcolor: "rgba(255,255,255,0.9)"
-    }
+    height: Math.max(mobile ? 520 : 650, rows * (mobile ? 280 : 320)),
+    margin: mobile
+      ? {l: 58, r: 18, t: 90, b: 150}
+      : {l: 75, r: 245, t: 105, b: 75},
+    legend: mobile
+      ? {
+          orientation: "h",
+          x: 0,
+          xanchor: "left",
+          y: -0.12,
+          yanchor: "top",
+          bgcolor: "rgba(255,255,255,0.9)",
+          font: {size: 10}
+        }
+      : {
+          orientation: "v",
+          x: 1.01,
+          xanchor: "left",
+          y: 1,
+          yanchor: "top",
+          bgcolor: "rgba(255,255,255,0.9)"
+        }
   };
 
   areas.forEach((area, areaIndex) => {

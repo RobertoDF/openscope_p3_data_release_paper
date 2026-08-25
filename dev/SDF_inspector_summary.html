@@ -39,7 +39,14 @@
       box-shadow: 0 2px 10px #0f172a0d;
     }
     @media (max-width: 900px) { .controls { grid-template-columns: 1fr 1fr; } }
-    @media (max-width: 650px) { .controls { grid-template-columns: 1fr; } main { padding: 12px; } }
+    @media (max-width: 650px) {
+      main { padding: 12px; }
+      h1 { font-size: 1.2rem; }
+      .page-nav { line-height: 1.7; }
+      .controls { grid-template-columns: 1fr; gap: 10px; padding: 12px; }
+      select { min-height: 44px; }
+      #summary-plot { min-height: 520px; }
+    }
   </style>
 </head>
 <body>
@@ -492,6 +499,7 @@ function structurePlot(rows, strata) {
 
 function render() {
   const rows = sessionMeans();
+  const mobile = window.matchMedia("(max-width: 650px)").matches;
   const strata = [...new Set(rows.map(row => row.stratum))].sort();
   if (!rows.length) {
     Plotly.react("summary-plot", [], {
@@ -509,15 +517,34 @@ function render() {
     ? structurePlot(rows, strata)
     : verticalPlot(rows, strata);
   const sessionCount = new Set(rows.map(row => row.session)).size;
-  const height = structureMode ? Math.max(650, strata.length * 30 + 180) : 650;
+  const height = structureMode
+    ? Math.max(mobile ? 520 : 650, strata.length * (mobile ? 26 : 30) + 180)
+    : (mobile ? 560 : 650);
   const layout = {
     ...result.layout,
-    title: {text: `Cross-session mismatch response | ${sessionCount} sessions`, x: 0.01, xanchor: "left"},
+    title: {
+      text: `Cross-session mismatch response | ${sessionCount} sessions`,
+      x: 0.01,
+      xanchor: "left",
+      font: {size: mobile ? 14 : 17}
+    },
     template: "plotly_white",
     height,
     hovermode: "closest",
-    margin: {l: structureMode ? 110 : 80, r: outsideCohortLegend ? 360 : 40, t: 110, b: 80},
-    legend: outsideCohortLegend
+    margin: mobile
+      ? {l: structureMode ? 72 : 58, r: 18, t: 90, b: 160}
+      : {l: structureMode ? 110 : 80, r: outsideCohortLegend ? 360 : 40, t: 110, b: 80},
+    legend: mobile
+      ? {
+          orientation: "h",
+          x: 0,
+          xanchor: "left",
+          y: -0.14,
+          yanchor: "top",
+          bgcolor: "rgba(255,255,255,0.9)",
+          font: {size: 9}
+        }
+      : outsideCohortLegend
       ? {
           orientation: "v",
           x: 1.02,
