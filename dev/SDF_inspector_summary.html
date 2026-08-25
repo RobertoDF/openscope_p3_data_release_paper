@@ -311,11 +311,15 @@ function verticalPlot(rows, strata) {
   const traces = [];
   const annotations = [];
   const multi = strata.length > 1;
+  const stratumSpacing = multi
+    ? Math.min(0.14, 0.72 / Math.max(strata.length - 1, 1))
+    : 0;
   const stratumOffset = new Map(strata.map((stratum, index) => [
     stratum,
-    multi ? (index - (strata.length - 1) / 2) * Math.min(0.45 / strata.length, 0.12) : 0
+    (index - (strata.length - 1) / 2) * stratumSpacing
   ]));
-  const cohortOffset = {"Motor cohort": -0.035, "Sequence cohort": 0.035};
+  const cohortOffset = {"Motor cohort": -0.03, "Sequence cohort": 0.03};
+  const jitterScale = multi ? 0.35 : 1;
 
   strata.forEach((stratum, stratumIndex) => {
     conditionKeys.forEach((condition, conditionIndex) => {
@@ -324,7 +328,8 @@ function verticalPlot(rows, strata) {
       const color = multi ? palette[stratumIndex % palette.length] : CONDITIONS[condition].color;
       const x = selected.map(row =>
         conditionIndex + stratumOffset.get(stratum) +
-        (cohortControl.checked ? cohortOffset[row.cohort] : 0) + jitter(row.session)
+        (cohortControl.checked ? cohortOffset[row.cohort] : 0) +
+        jitter(row.session) * jitterScale
       );
       traces.push(markerTrace(selected, x, selected.map(row => row.value), color, false));
 
@@ -498,7 +503,8 @@ function render() {
   }
 
   const structureMode = groupControl.value === "Structure acronym";
-  const outsideCohortLegend = structureMode && cohortControl.checked;
+  const layerMode = groupControl.value === "Layer";
+  const outsideCohortLegend = (structureMode || layerMode) && cohortControl.checked;
   const result = structureMode && strata.length > 1
     ? structurePlot(rows, strata)
     : verticalPlot(rows, strata);
