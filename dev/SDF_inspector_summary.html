@@ -92,27 +92,27 @@ function addOptions(select, values) {
     select.appendChild(option);
   }
 }
-function qualifyingParentAreas() {
+function qualifyingValues(field, values) {
   const counts = new Map();
   for (const row of SUMMARY.records) {
     if (row.c !== conditionKeys[0]) continue;
-    const key = `${row.s}|${row.p}`;
+    const key = `${row.s}|${row[field]}`;
     counts.set(key, (counts.get(key) || 0) + row.k);
   }
-  const sessionsByArea = new Map();
+  const sessionsByValue = new Map();
   for (const [key, count] of counts) {
     if (count < SUMMARY.min_cells) continue;
-    const [session, area] = key.split("|");
-    if (!sessionsByArea.has(area)) sessionsByArea.set(area, new Set());
-    sessionsByArea.get(area).add(session);
+    const [session, value] = key.split("|");
+    if (!sessionsByValue.has(value)) sessionsByValue.set(value, new Set());
+    sessionsByValue.get(value).add(session);
   }
-  return SUMMARY.parent_areas.filter(
-    area => (sessionsByArea.get(area)?.size || 0) >= SUMMARY.min_sessions
+  return values.filter(
+    value => (sessionsByValue.get(value)?.size || 0) >= SUMMARY.min_sessions
   );
 }
 
-addOptions(parentControl, qualifyingParentAreas());
-addOptions(structureControl, SUMMARY.structures);
+addOptions(parentControl, qualifyingValues("p", SUMMARY.parent_areas));
+addOptions(structureControl, qualifyingValues("a", SUMMARY.structures));
 addOptions(neuronControl, SUMMARY.neuron_types);
 
 function average(values) {
