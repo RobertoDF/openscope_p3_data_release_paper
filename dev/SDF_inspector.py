@@ -774,6 +774,11 @@ def _(
         all_unit_metadata["structure_acronym"] == "VL", "parent_area"
     ] = "TH"
     _cortex_mask = all_unit_metadata["parent_area"] == "Isocortex"
+    _layer_suffix = all_unit_metadata.loc[
+        _cortex_mask, "structure_acronym_detailed"
+    ].str.extract(r"(2/3|6a|6b|1|4|5|6)$", expand=False)
+    all_unit_metadata["cortical_layer"] = pd.NA
+    all_unit_metadata.loc[_cortex_mask, "cortical_layer"] = "L" + _layer_suffix
     all_unit_metadata.loc[_cortex_mask, "structure_acronym"] = (
         all_unit_metadata.loc[_cortex_mask, "structure_acronym"]
         .str.replace(r"(?:2/3|6a|6b|1|4|5|6)$", "", regex=True)
@@ -882,7 +887,7 @@ def _(
         all_unit_metadata["session_id"].isin(sessions_df["session_id"]),
         [
             "session_id", "unit_id", "structure_acronym",
-            "parent_area", "neuron_type",
+            "parent_area", "neuron_type", "cortical_layer",
         ],
     ].copy()
     annotated_units["parent_area"] = annotated_units["parent_area"].replace(
@@ -937,7 +942,13 @@ def _(
 @app.cell(hide_code=True)
 def _(SDF_NEURON_TYPES, SDF_PARENT_AREAS, SDF_STRUCTURE_ACRONYMS, mo):
     summary_group_picker = mo.ui.radio(
-        options=["All together", "Parent area", "Structure acronym", "Neuron type"],
+        options=[
+            "All together",
+            "Parent area",
+            "Structure acronym",
+            "Layer",
+            "Neuron type",
+        ],
         value="All together",
         label="Stratify by",
         inline=True,
@@ -1024,7 +1035,10 @@ def summary(
         return _out
 
     _summary = summary_df.copy()
-    if parent_area_picker.value != "All areas":
+    _group_mode = summary_group_picker.value
+    if _group_mode == "Layer":
+        _summary = _summary.loc[_summary["parent_area"] == "Isocortex"]
+    elif parent_area_picker.value != "All areas":
         _summary = _summary.loc[
             _summary["parent_area"] == parent_area_picker.value
         ]
@@ -1037,11 +1051,12 @@ def summary(
             _summary["neuron_type"] == neuron_type_picker.value
         ]
 
-    _group_mode = summary_group_picker.value
     if _group_mode == "Parent area":
         _summary["stratum"] = _summary["parent_area"]
     elif _group_mode == "Structure acronym":
         _summary["stratum"] = _summary["structure_acronym"]
+    elif _group_mode == "Layer":
+        _summary["stratum"] = _summary["cortical_layer"]
     elif _group_mode == "Neuron type":
         _summary["stratum"] = _summary["neuron_type"]
     else:
@@ -1052,6 +1067,8 @@ def summary(
         _anatomy_column = "parent_area"
     elif _group_mode == "Structure acronym":
         _anatomy_column = "structure_acronym"
+    elif _group_mode == "Layer":
+        _anatomy_column = "cortical_layer"
 
     if _anatomy_column is not None:
         _cohort_columns = ["training_cohort"] if cohort_toggle.value else []
@@ -1861,18 +1878,22 @@ def cohort_statistics(
         )
     else:
         _cs = summary_df.copy()
-        if parent_area_picker.value != "All areas":
+        _mode = summary_group_picker.value
+        if _mode == "Layer":
+            _cs = _cs.loc[_cs["parent_area"] == "Isocortex"]
+        elif parent_area_picker.value != "All areas":
             _cs = _cs.loc[_cs["parent_area"] == parent_area_picker.value]
         if structure_picker.value != "All structures":
             _cs = _cs.loc[_cs["structure_acronym"] == structure_picker.value]
         if neuron_type_picker.value != "All neuron types":
             _cs = _cs.loc[_cs["neuron_type"] == neuron_type_picker.value]
 
-        _mode = summary_group_picker.value
         if _mode == "Parent area":
             _cs["stratum"] = _cs["parent_area"]
         elif _mode == "Structure acronym":
             _cs["stratum"] = _cs["structure_acronym"]
+        elif _mode == "Layer":
+            _cs["stratum"] = _cs["cortical_layer"]
         elif _mode == "Neuron type":
             _cs["stratum"] = _cs["neuron_type"]
         else:
