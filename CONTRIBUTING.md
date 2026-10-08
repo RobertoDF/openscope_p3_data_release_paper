@@ -21,6 +21,28 @@ After changing your portal record, notify the repository maintainer and request 
 
 The maintainer-run sync pins the newest portal commit and maps its ORCID, affiliation, CRediT-level, and section-level records into the structure consumed by [AuthorshipExtractor](https://github.com/AllenNeuralDynamics/AuthorshipExtractor). Do not infer or assign contributions on another person's behalf; authors should review their own portal record.
 
+For a one-time reviewed refresh, a maintainer may pass `--review-file /path/outside/the/clone/approval.json`. Keep this file outside the repository. It identifies the reviewed portal version and the approved contributors by their exact submitted names, with optional explicitly confirmed name or section corrections:
+
+```json
+{
+	"project": "p3_data_release",
+	"commit": "<reviewed portal commit>",
+	"contributors": {
+		"First Submitted Name": {},
+		"Second Submitted Name": {
+			"name": "Confirmed Publication Name",
+			"sections": {
+				"Neuropixels data validation": "Mesoscope data validation"
+			}
+		}
+	}
+}
+```
+
+Only the listed contributors are included, in portal order. The sync reads that exact version, preserves submitted records, roles, effort levels, and other metadata, and marks the generated snapshot as reviewed without recording the local review file or its approval list in provenance. Unknown names, ambiguous names, and invalid section corrections stop the refresh. The review applies only to that invocation: omitting `--review-file` restores the normal full-portal refresh. Run the publication checks after regenerating the snapshot.
+
+Portrait links are maintained in the editable `author_portrait_sources.json`. Use clearly identified portraits from authoritative institutional, laboratory, or author-controlled academic profiles, record the source page and measured image dimensions, and leave uncertain identities unresolved. Images remain remotely hosted; do not bundle downloaded portraits. Prefer large images, but verified profile thumbnails of at least 128 pixels in each dimension can be used for the small author avatars without upscaling the source. A record-level `verified_on` date applies to that portrait; otherwise the manifest-level date applies. To refresh portraits, a maintainer adds `--avatar-source author_portrait_sources.json` to the sync command, along with any current local `--review-file`. This regenerates both `author_avatars.json` and the avatar URLs in `authors.yml`; never hand-edit either generated file. Validate that author identities, order, and contributions are unchanged after a portrait-only refresh.
+
 ## Figures
 
 Every figure needs:
@@ -33,6 +55,32 @@ Every figure needs:
 6. For every interactive figure, a scientifically complete static counterpart generated from the same validated inputs for PDF, print, and other noninteractive exports.
 
 Do not commit NWB files or other large primary datasets. Cite a versioned DANDI asset or project S3 asset and record its URL, path, version or DOI, retrieval date, and any required checksum.
+
+## Repository health and binary files
+
+This repository intentionally versions small binary sources needed to edit and reproduce the manuscript, including Illustrator, PowerPoint, Word, image, and short media files. Git history is effectively permanent: deleting a large file in a later commit does not recover the space, and each revision of a binary may add nearly the file's full size again.
+
+Use these limits for each new or replacement file:
+
+| File size | Policy |
+| --- | --- |
+| Less than 10 MiB | Regular Git is acceptable when the file is required for the manuscript, a figure source, or the published site. |
+| 10 MiB through 100 MiB | Get maintainer approval before committing. Explain why the file belongs in Git and why it cannot be reduced or stored externally. GitHub warns for files larger than 50 MiB. |
+| More than 100 MiB | Do not commit it to regular Git; GitHub rejects the file. Use a versioned external data store instead. |
+
+There is no project-specific total-size cap below GitHub's current repository limits. Maintainers should monitor growth and repository health as the manuscript evolves. A pull request that adds or replaces more than 25 MiB of binary content in total requires maintainer review, even when every individual file is below 10 MiB.
+
+Before committing a binary file:
+
+1. Confirm that it is needed to edit, reproduce, review, or publish the manuscript. Do not commit caches, temporary exports, autosaves, operating-system metadata, or local environments.
+2. Commit one canonical copy. If the build or deployment needs the file at another path, generate an ignored copy during the build instead of committing both paths.
+3. Prefer meaningful source revisions over repeated autosave or export commits. Compress images and media without compromising their scientific content.
+4. Keep primary datasets and analysis-scale derived datasets in DANDI or another stable, versioned store. Commit a URL or DOI, version identifier, checksum, and retrieval instructions instead. Compact display payloads for interactive figures may be committed when they follow the requirements below.
+5. Inspect staged changes with `git status --short` and `git diff --cached --stat`. If a large file was staged accidentally, remove it from the index before committing with `git restore --staged <path>`.
+
+Git LFS is not currently configured and is not recommended for this repository. It adds separate storage and bandwidth accounting, collaborator setup, and CI, Pages, and archival constraints. Store files above GitHub's regular Git limit in DANDI or another stable, versioned external store. Do not enable Git LFS without an explicit project-level decision.
+
+Maintainers should periodically run `git count-objects -vH` and inspect the repository with [git-sizer](https://github.com/github/git-sizer), especially before a release or after merging media-heavy work.
 
 ## Static and interactive figures with MyST
 
@@ -109,9 +157,19 @@ For the behavior figure, the stages map to repository files as follows:
 	The cache is optional. Removing it increases download time but must not change the JSON values.
 - `scripts/extract_behavior_excerpts.py` separately writes `figure_sources/data/behavior-excerpts.json`, a compact synchronized excerpt for representative Neuropixels, mesoscope, and SLAP2 sessions.
 - `scripts/extract_behavior_static_frames.py` extracts representative public S3 camera frames into `figure_sources/media/behavior-viewer-static/` and records source URLs, ETags, target/decoded times, display transforms, and output checksums in `behavior-static-frames.provenance.json`.
+- `scripts/extract_pupil_event_responses.py` streams the released P3 NWBs, aligns pupil area and processed forward running speed to the same context and matched-control stimulus-table `start_time` values, applies documented signal quality control and context-specific baselines, and writes the committed `figure_sources/data/pupil-event-responses.json` intermediate plus provenance.
+- `scripts/extract_neuropixels_event_responses.py` streams four versioned Neuropixels NWBs from one mouse, computes native 2.5 ms context and matched-control SDFs over −0.75 to 0.75 s (standard, sensorimotor, sequence) or −1.5 to 1.5 s (duration) with a 10 ms causal exponential time constant, 10τ support, and hidden pre-padding, retains every 2.5 ms mean-SDF sample, reads Units-table firing rates, sorter labels, and peak-to-valley durations, derives same-session optotagged SST and waveform-based RS/FS classes, maps exact and canonical parent areas plus their Allen graph order through the pinned `iblatlas` ontology, computes event-specific Rastermap 1.0 ranks, and writes committed metadata plus compressed quantized SDF atlases for the interactive unit-response explorer.
 - The routine command `uv run build-publication-figures` reads these committed intermediates and media files to produce both `interactive/behavior-viewer.html` and `images/figures/generated/synchronized-behavior.svg`. It does not recompute the many-NWB running analysis.
 
 Use the same architecture for future figures that aggregate units, receptive fields, anatomical coverage, response metrics, or other values across many NWB files: cloud extractor → committed checksummed intermediate → deterministic static and interactive renderers.
+
+### Derived binary data
+
+Compact display data for an interactive figure may be committed when it is reproducibly derived from versioned source data. Keep primary and analysis-scale data in their external archive.
+
+Use a browser-readable format appropriate to the payload. Existing figures use JSON or base64-encoded typed arrays for smaller data and separate gzip-compressed typed arrays for larger data. Include the metadata needed to interpret the payload and retain source and output checksums when the generator already produces them.
+
+Commit one canonical copy under `figure_sources/data/` or `figure_sources/media/<figure-name>/`. When an interactive page needs the data beside its generated HTML, `uv run build-publication-figures` creates an ignored deployment copy under `interactive/`, which MyST copies into the ignored `_build/` site output. Do not commit or edit the deployment copy. The binary file-size and maintainer-review rules above still apply.
 
 ## Using AI assistants effectively
 

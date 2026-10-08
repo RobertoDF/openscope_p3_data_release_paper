@@ -59,21 +59,27 @@ used by the viewer are not stored in it.
 
 The implementation is in
 [`src/openscope_p3_publication/optotagging.py`](../../src/openscope_p3_publication/optotagging.py).
-To regenerate the complete table, open the marimo notebook, choose **All
-sessions**, and run the analysis:
+To refresh the complete table, run the command-line extractor from the repository
+root. This explicitly reads the public NWBs and is not part of routine builds:
 
-```powershell
-uv run --with dandi --with h5py --with iblatlas --with iblutil --with marimo `
-  --with matplotlib --with numpy --with pandas --with pyarrow --with remfile `
-  --with scipy --with seaborn marimo edit optotagging_analysis.py
+```bash
+uv run --with dandi --with h5py --with iblatlas --with iblutil --with numpy \
+  --with pandas --with pyarrow --with remfile --with scipy \
+  python scripts/extract_optotagging_results.py
 ```
 
-By default, the notebook writes `optotagging-results.parquet` and
+By default, the extractor writes `optotagging-results.parquet` and
 `optotagging-results.provenance.json` to
-`~/Data/openscope_p3_data_release_paper/`. The provenance document records the
-DANDI version and asset inventory, output checksum, condition parameters,
-excluded sessions, and failed sessions. When updating the committed snapshot,
-copy both generated files into `figure_sources/data/` together.
+`~/Data/openscope_p3_data_release_paper/`. Use `--output-dir` to choose another
+staging directory. Unsupported sessions are recorded as exclusions; any other
+session error stops the extraction before existing results are replaced. The
+provenance document records the DANDI version and asset inventory, output
+checksum, condition parameters, excluded sessions, and failed sessions.
+
+The committed table is a historical snapshot retrieved on August 4, 2026. The
+DANDI draft can change, so a new extraction is a deliberate refresh rather than
+a guarantee of byte-identical reconstruction. Review the new inventory and
+results before copying both generated files into `figure_sources/data/` together.
 
 From the repository root, load the committed table with:
 
@@ -116,5 +122,9 @@ or to apply an alternative classification appropriate for their analysis.
 `behavior-static-frames.provenance.json` and `figure_sources/media/behavior-viewer-static/` record 10 camera stills used by Figure 8's Static view. Each row's stills and running profile now use the same mouse and source session. Neuropixels and mesoscope retain the synchronized 8-second excerpt selection; SLAP2 uses video time 600 seconds from the full-session profile source. Each JPEG is tied to its mouse, session, public MP4 URL, ETag, content length, source-video target time, decoded frame time, and output checksum. Every frame receives an independent 1st–99th luminance-percentile stretch plus bounded adaptive gamma targeting 35% median luminance; all display parameters are recorded. Refresh all stills with `uv run --with av --with pillow python scripts/extract_behavior_static_frames.py`, or only SLAP2 with `--modality slap2`.
 
 `running-statistics.json` contains block-aware locomotion summaries for every P3 worksheet session with public running and protocol-timing sources. Neuropixels and mesoscope values come from DANDI NWB running-speed series and named interval tables. SLAP2 values come from the native signed 16-bit Harp quadrature counter and row-aligned stimulus pulses; counts are unwrapped and converted with the pinned acquisition convention of 8192 counts/revolution, an 8.255 cm disc radius, and a 2/3 effective running radius. All sources are integrated to position and differenced into common 50 ms bins. Negative velocity is set to zero before calculating mean forward speed. Session means are retained for every measured block. Repeated complete sessions are then averaged within mouse for each block, supplying one point per mouse in panel D's shared-axis grouped modality plot. Three source-backed example profiles retain 5-second means and all eight measured block windows. The payload records worksheet coverage, exclusions, DANDI asset manifests, raw Harp checksums, stimulus-pulse provenance, and calibration provenance. Regenerate it with `uv run --with h5py --with harp-python --with numpy --with remfile python scripts/extract_running_statistics.py --cache-dir /tmp/openscope-p3-running-cache`.
+
+`pupil-event-responses.json` contains display-aligned peri-event pupil-area and forward-running-speed summaries for all 154 released P3 Neuropixels, mesoscope, and SLAP2 sessions in the local Data Access snapshot. Both signals use the same context and matched-control NWB rows aligned to each row's frame-quantized `start_time`. Standard trials use the complete preceding interstimulus interval, sequence trials use the preceding sequence element, sensorimotor trials use the preceding 343 ms of visual flow, and duration trials use the unmanipulated interval from row i−2 `stop_time` to row i−1 `start_time`, matching the neural-response analysis. Scalar responses use the NWB stimulus interval for standard, sequence, and sensorimotor events; duration responses use the following commanded interval from `start_time + 0.343 s` through `start_time + 0.343 s + Delay`. Pupil area is represented both in raw pixels squared and as within-trial percent change from the median baseline. Running uses the NWB `processing/running/running_speed` series in cm/s, sets negative velocity to zero as in Figure 8, and is represented both as raw forward speed and change from the trial's mean baseline. Following the established running-summary pipeline, non-increasing running timestamps are discarded only when they comprise at most 0.1% of a source series. Both signals are linearly sampled on the common 20 Hz grid without temporal filtering, with interpolation across gaps longer than 200 ms prohibited. The snapshot retains session and mouse mean/SD traces, scalar response mean/SD values, valid/available trial counts, structured rejection counts, mouse-bootstrap population summaries, signal-specific source availability, DANDI asset digests, and source/code checksums. The interactive figure derives individual trace SEM as the retained mouse-level SD divided by the square root of valid trials and calculates population trace SEM directly across mouse mean traces; scalar effect intervals remain mouse-bootstrap estimates. Repeated-session mouse SD combines equal-session within-trial variance and between-session mean variation. Builds read this committed intermediate offline. Refresh it with `uv run --with h5py --with numpy --with remfile python scripts/extract_pupil_event_responses.py --cache-dir /tmp/openscope-p3-pupil-event-cache`.
+
+`neuropixels-event-responses.json` and `figure_sources/media/neuropixels-event-responses/` contain per-unit mismatch and matched-control spike-density functions for four sessions from mouse 830846, one per predictive-processing context. Standard-oddball, sensorimotor, and sequence windows span −0.75 to 0.75 s; duration spans −1.5 to 1.5 s. Extraction bins spikes at 2.5 ms and applies a 10 ms causal exponential kernel with 10τ (100 ms) support, using 97.5 ms of hidden causal pre-padding. Quantized uint16 mean-SDF atlases retain every native 2.5 ms sample at 0.05 spikes/s resolution, so the browser does not repeat, interpolate, or downsample the convolution. Metadata records manuscript-QC status, sorter label, the NWB Units-table firing rate and peak-to-valley duration, same-session 5 Hz SST optotagging classification, derived RS/FS/SST type, probe, depth, exact CCF area, canonical parent area, positive Allen IDs, ontology levels, exact and parent `graph_order` values from `iblatlas.BrainRegions.order`, Allen major parent and analysis-area groups, separate mismatch/control baseline statistics, mismatch-presentation response rates, and event-specific Rastermap 1.0 ranks derived from the native mismatch-z-score SDFs. Canonical parent areas collapse Allen layer nodes and hyphenated subdivisions to the nearest non-collapsible ancestor while retaining already canonical annotations. DANDI digests and source/code checksums make the snapshot independently verifiable. Refresh it with `uv run --with h5py --with iblatlas --with numpy --with pandas --with rastermap==1.0 --with remfile --with scipy python scripts/extract_neuropixels_event_responses.py --cache-dir /tmp/openscope-p3-neural-response-cache`.
 
 `stimulus-table-excerpts/` contains compact, checksum-verified excerpts from all four pinned example tables. Context excerpts span approximately 24 seconds around the first true mismatch; shared-block excerpts preserve the first approximately 24 seconds of each generated control block. Source row and trial numbers are retained.

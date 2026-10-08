@@ -267,7 +267,7 @@ FIGURE_PRESENTATION_OVERRIDES = {
         "path": "./images/figures/generated/figure-08-basic-stimuli-plan.svg",
     },
     "image4.png": {
-        "path": "./images/figures/generated/figure-10-standard-oddball-plan.svg",
+        "path": "./images/figures/generated/figure-11-standard-oddball-plan.svg",
     },
 }
 FIGURE_REFERENCE_REPLACEMENTS = {
@@ -292,7 +292,7 @@ FIGURE_REFERENCE_REPLACEMENTS = {
     ),
     "This analysis, the questions below, and Figure 9 are planning placeholders.": (
         "This analysis, the questions below, and "
-        "[Figure 10](#fig-standard-oddball-plan) are planning placeholders."
+        "[Figure 11](#fig-standard-oddball-plan) are planning placeholders."
     ),
 }
 
@@ -553,13 +553,19 @@ MAIN_FIGURE_PROMOTION_REPLACEMENTS = {
         "./images/figures/generated/figure-08-basic-stimuli-plan.svg"
     ),
     "./images/figures/generated/figure-09-standard-oddball-plan.svg": (
-        "./images/figures/generated/figure-10-standard-oddball-plan.svg"
+        "./images/figures/generated/figure-11-standard-oddball-plan.svg"
+    ),
+    "./images/figures/generated/figure-10-standard-oddball-plan.svg": (
+        "./images/figures/generated/figure-11-standard-oddball-plan.svg"
     ),
     "[Figure 6](#fig-unit-extraction-plan)": "[Figure 7](#fig-unit-extraction-plan)",
     "[Figure 7](#fig-basic-stimuli-plan)": "[Figure 8](#fig-basic-stimuli-plan)",
     "[Figure 8](#fig-behavior-tracking)": "[Figure 9](#fig-behavior-tracking)",
     "[Figure 9](#fig-standard-oddball-plan)": (
-        "[Figure 10](#fig-standard-oddball-plan)"
+        "[Figure 11](#fig-standard-oddball-plan)"
+    ),
+    "[Figure 10](#fig-standard-oddball-plan)": (
+        "[Figure 11](#fig-standard-oddball-plan)"
     ),
 }
 
@@ -569,7 +575,13 @@ electrophysiology sessions are available at
 [DANDI:001637](https://dandiarchive.org/dandiset/001637), mesoscope two-photon
 imaging sessions at [DANDI:001768](https://dandiarchive.org/dandiset/001768),
 and SLAP2 dendritic-imaging sessions at
-[DANDI:001424](https://dandiarchive.org/dandiset/001424). Use the tabs below"""
+[DANDI:001424](https://dandiarchive.org/dandiset/001424). NWB files can be
+streamed directly from DANDI without downloading the complete asset; see the
+[data access code example](#data-access-code-example) below. The
+[OpenScope Databook](https://alleninstitute.github.io/openscope_databook)
+provides companion analysis notebooks for selecting sessions and working with
+the electrophysiology, imaging, and behavioral objects introduced here. Use
+the tabs below"""
 
 SLAP2_NWB_TAB = "\n".join(
     [
@@ -585,9 +597,10 @@ SLAP2_NWB_TAB = "\n".join(
         "| Question | NWB contents | Representative PyNWB entry point |",
         "| --- | --- | --- |",
         (
-            "| Where and how was each DMD path imaged? | `/general/optophysiology` "
-            "describes the DMD1 and DMD2 imaging planes, optical channels, device, "
-            "indicator, and field geometry. | `nwbfile.imaging_planes`, "
+            "| Where and how was each DMD path imaged? | `nwbfile.imaging_planes` "
+            "describes the DMD1 and DMD2 imaging planes, optical channels, indicator, "
+            "and field geometry. The SLAP2 microscope is registered in "
+            "`nwbfile.devices`. | `nwbfile.imaging_planes`, "
             "`nwbfile.devices` |"
         ),
         (
@@ -649,6 +662,78 @@ hardware frame indices to MP4 presentation time. SLAP2 camera frames use
 per-frame Harp timestamps on the acquisition clock. Camera and source selectors
 expose the underlying public data without bundling multi-gigabyte videos into
 the publication.
+:::"""
+
+NEUROPIXELS_EVENT_RESPONSE_BLOCK = """## Neuropixels mismatch responses across predictive contexts
+
+Unit-level mismatch responses and matched controls across all four Neuropixels
+contexts are shown in [Figure 10](#fig-neuropixels-event-responses).
+
+:::{iframe} ./interactive/neuropixels-event-responses.html
+:label: fig-neuropixels-event-responses
+:width: 100%
+:title: Neuropixels mismatch responses by context, area, and unit
+:placeholder: ./images/figures/generated/figure-10-neuropixels-event-responses.svg
+
+Neuropixels mismatch responses by predictive-processing context, anatomical area,
+and sorted unit. Four public sessions from sequence-cohort mouse 830846 provide
+one sequence, duration, standard-oddball, and sensorimotor context. Because each
+recording used a new acute insertion, units are distinct across sessions and are
+not longitudinally matched neurons. Spike counts are aligned to each selected NWB
+interval row's display-synchronized `start_time`; standard-oddball, sensorimotor,
+and sequence windows span −0.75 to 0.75 s, while duration windows span −1.5 to
+1.5 s. Counts are accumulated in 2.5 ms bins, converted to spikes/s, and
+convolved with a causal exponential spike-density kernel with a 10 ms time
+constant and 10τ (100 ms) support. A hidden 97.5 ms pre-window supplies the
+preceding 39 bins required for a fully supported causal estimate at the displayed
+left edge. The resulting native 2.5 ms SDF is retained for heatmaps, traces, and
+response-based sorting; response-window values are calculated separately from
+unsmoothed spike times. Standard-oddball events are matched to the same physical
+event in both standard-control C1 repeats, sequence events to sequential control
+C2, duration events to the same delay or omission in jitter control C3, and
+sensorimotor events to the same motor event in open-loop control C4. Every
+response-window value uses the selected mismatch or control row's recorded
+`start_time`–`stop_time`. Standard-event baselines use the preceding interstimulus
+interval, sequence baselines use the preceding sequence element, and sensorimotor
+baselines use the preceding 343 ms of visual flow. Duration baselines exclude the
+manipulated delay and instead use the standard interstimulus interval preceding
+the prior stimulus, from row *i−2* `stop_time` to row *i−1* `start_time`. The
+**Interactive** view selects context, event, probe, exact CCF area or
+Allen-ontology cortical, thalamic, hippocampal, visual, frontal, or motor
+grouping, unit set, sorter label, minimum firing rate, neuron type, and row order.
+MUA and SUA labels are included by default, sorter-noise labels are excluded, and
+the minimum whole-session firing rate from the NWB Units table defaults to 1 Hz.
+SST units have a positive 5 Hz optotagging response with Wilcoxon *p* < 0.05 and
+modulation index > 0.1. Remaining units are classified from peak-to-valley
+duration as fast-spiking (FS; ≤0.4 ms, or ≤0.28 ms in thalamus) or regular-spiking
+(RS), with striatal units assigned RS. Heatmaps show mismatch SDF, control SDF,
+mismatch-minus-control SDF, mismatch baseline z score, or control baseline z
+score, with labeled spikes/s or z-score color limits. Raw SDF heatmaps use a
+Greys scale. Z-score limits default to ±3 and are adjustable from ±1 to ±6.
+Baseline z scores standardize each condition against its own 20 ms trial-baseline
+bins. Response-magnitude and time-to-positive-peak ordering use the
+mismatch-z-score heatmap. Rastermap 1.0 ordering [@stringer2024rastermap] is
+precomputed separately for each event from the native mismatch-z-score SDFs. All
+three response-based orders remain fixed when the displayed heatmap value or unit
+filters change. Dashed guides mark only the selected mismatch presentation onset
+and offset. **Area mean** shows mismatch and matched-control SDFs averaged equally
+across selected units with ±1 SEM across neurons; choosing **Individual unit**
+shows that unit's trial-mean SDF without an uncertainty band. A checked
+**Subtract baseline** control displays Δ firing rate after subtracting the
+corresponding mismatch or control baseline; clearing it displays the raw SDF in
+the same plot. Manuscript QC requires ISI-violations ratio < 0.5, presence ratio
+> 0.8, and amplitude cutoff < 0.1; the **All sorted** option retains selected MUA
+and SUA units irrespective of those three numerical thresholds. In the
+**Static** view, **A,** the area-by-event matrix summarizes mean QC-unit
+mismatch-presentation firing-rate differences for all 16 conditions across the
+48 frontal, visual, hippocampal, or thalamic areas containing at least 10 pooled
+QC-passing units. Areas are alphabetized within that anatomical group order.
+**B,** four representative mismatch-minus-control SDF heatmaps show the 150
+default-filter units with the largest absolute effects, with explicit color
+scales and baseline-subtracted population SDFs with across-neuron SEM below.
+Across the four source sessions, 13,682 sorted units were available and 7,266
+passed the manuscript QC thresholds. Data come from the public draft of
+[Dandiset 001637](https://dandiarchive.org/dandiset/001637/draft/files).
 :::"""
 
 BEHAVIOR_ANALYSIS_DESCRIPTION = """## Behavioral data analysis across modalities
@@ -869,7 +954,7 @@ def render_figure(source_name: str) -> str:
     if source_name == "image9.png":
         return render_mesoscope_laser_power_table()
     if source_name == "image6.png":
-        return BEHAVIOR_VIEWER_BLOCK
+        return f"{BEHAVIOR_VIEWER_BLOCK}\n\n{NEUROPIXELS_EVENT_RESPONSE_BLOCK}"
 
     asset = ASSET_BY_SOURCE[source_name]
     if asset.status == "removed":
@@ -1311,9 +1396,11 @@ def add_slap2_nwb_contents(markdown: str) -> str:
     start = markdown.index(heading)
     stop = markdown.index(end_heading, start)
     section = markdown[start:stop]
+    if "./interactive/nwb-file-contents.html" in section:
+        return markdown
     intro_pattern = re.compile(
         r"All data from this project are packaged as Neurodata\s+Without Borders.*?"
-        r"Use the tabs below",
+        r"Use\s+the\s+tabs\s+below",
         re.DOTALL,
     )
     section, count = intro_pattern.subn(NWB_ACCESS_INTRO, section, count=1)

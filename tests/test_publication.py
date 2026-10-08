@@ -6,9 +6,16 @@ import re
 import runpy
 import struct
 import urllib.parse
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
+
+from openscope_p3_publication.authorship import apply_author_review
+from openscope_p3_publication.neural_response_figure import (
+    load_neuropixels_event_responses,
+    response_matrix,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -60,6 +67,20 @@ def publication_snapshot_updater() -> dict:
     )
 
 
+def test_snapshot_workflow_commits_refreshed_provenance() -> None:
+    workflow = (REPO_ROOT / ".github/workflows/update-publication-snapshots.yml").read_text(
+        encoding="utf-8"
+    )
+    updater = publication_snapshot_updater()
+
+    for constant in (
+        "RUNNING_STATISTICS_PATH",
+        "BEHAVIOR_STATIC_PROVENANCE_PATH",
+        "PUPIL_EVENT_PROVENANCE_PATH",
+    ):
+        assert updater[constant].relative_to(REPO_ROOT).as_posix() in workflow
+
+
 def test_session_snapshot_extracts_qc_and_qc_tags() -> None:
     extractor = runpy.run_path(
         str(REPO_ROOT / "scripts" / "extract_experimental_sessions.py")
@@ -105,6 +126,7 @@ def test_session_snapshot_refresh_repins_derived_provenance(tmp_path: Path) -> N
     session_path = tmp_path / "experimental-sessions.csv"
     running_path = tmp_path / "running-statistics.json"
     behavior_path = tmp_path / "behavior-static-frames.provenance.json"
+    pupil_path = tmp_path / "pupil-event-responses.provenance.json"
     previous = (
         b"source_session_id,mouse_id,date,modality,session_stimulus,qc,qc_tags,source_row\n"
         b"session-a,101,2026-01-01,mesoscope,OPTICAL_SESSION1_SEQUENCE,Pass,,8\n"
@@ -133,10 +155,17 @@ def test_session_snapshot_refresh_repins_derived_provenance(tmp_path: Path) -> N
     behavior_path.write_text(
         json.dumps({"running_statistics_sha256": "old"}), encoding="utf-8"
     )
+    pupil_path.write_text(
+        json.dumps(
+            {"source_snapshots": {"experimental_sessions": {"sha256": "old"}}}
+        ),
+        encoding="utf-8",
+    )
     updater["refresh_session_snapshot_dependents"].__globals__.update(
         {
             "RUNNING_STATISTICS_PATH": running_path,
             "BEHAVIOR_STATIC_PROVENANCE_PATH": behavior_path,
+            "PUPIL_EVENT_PROVENANCE_PATH": pupil_path,
         }
     )
 
@@ -144,9 +173,13 @@ def test_session_snapshot_refresh_repins_derived_provenance(tmp_path: Path) -> N
 
     running = json.loads(running_path.read_text(encoding="utf-8"))
     behavior = json.loads(behavior_path.read_text(encoding="utf-8"))
+    pupil = json.loads(pupil_path.read_text(encoding="utf-8"))
     assert running["source_session_records"]["sha256"] == file_sha256(session_path)
     assert running["sessions"][0]["source_row"] == 8
     assert behavior["running_statistics_sha256"] == file_sha256(running_path)
+    assert pupil["source_snapshots"]["experimental_sessions"]["sha256"] == (
+        file_sha256(session_path)
+    )
 
 
 def test_session_snapshot_refresh_rejects_semantic_changes(tmp_path: Path) -> None:
@@ -196,7 +229,7 @@ def test_manuscript_marks_unfinished_content() -> None:
     manuscript = (REPO_ROOT / "index.md").read_text(encoding="utf-8")
 
     assert ":::{note} Manuscript status" in manuscript
-    assert manuscript.count(":::{warning} Work in progress") == 8
+    assert manuscript.count(":::{warning} Work in progress") == 9
     assert manuscript.count('class="manuscript-wip-inline"') == 2
     for stale_marker in (
         "To be written",
@@ -209,15 +242,115 @@ def test_manuscript_marks_unfinished_content() -> None:
         assert stale_marker not in manuscript
 
 
+@pytest.fixture(name="author_review_example")
+def author_review_data() -> tuple[dict, dict]:
+    payload = {
+        "project_name": "example-project",
+        "sections": ["Original section", "Corrected section", "Other section"],
+        "contributors": [
+            {
+                "author": {"name": "First Author", "affiliation": ["Example Institute"]},
+                "credit_levels": [{"role": "software", "level": "supporting"}],
+                "section_levels": [
+                    {"section": "Original section", "level": "supporting", "description": "QC"},
+                    {"section": "Other section", "level": "equal"},
+                ],
+            },
+            {"author": {"name": "Second Author"}},
+            {"author": {"name": "Third Author"}},
+        ],
+    }
+    review = {
+        "project": "example-project",
+        "commit": "reviewed-version",
+        "contributors": {
+            "Second Author": {"name": "Corrected Name"},
+            "First Author": {"sections": {"Original section": "Corrected section"}},
+        },
+    }
+    return payload, review
+
+
+def test_author_review_preserves_submissions_and_portal_order(author_review_example) -> None:
+    payload, review = author_review_example
+    original_payload = deepcopy(payload)
+    original_review = deepcopy(review)
+
+    reviewed = apply_author_review(payload, review, "reviewed-version")
+
+    assert payload == original_payload
+    assert review == original_review
+    assert [entry["author"]["name"] for entry in reviewed["contributors"]] == [
+        "First Author", "Corrected Name"
+    ]
+    expected = deepcopy(payload)
+    expected["contributors"] = expected["contributors"][:2]
+    expected["contributors"][0]["section_levels"][0]["section"] = "Corrected section"
+    expected["contributors"][1]["author"]["name"] = "Corrected Name"
+    assert reviewed == expected
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"project": "other-project"}, "project does not match"),
+        ({"commit": "other-version"}, "commit does not match"),
+        ({"contributors": {}}, "nonempty mapping"),
+        ({"contributors": []}, "nonempty mapping"),
+        ({"contributors": {"Unknown Author": {}}}, "unknown contributors"),
+        ({"contributors": {"First Author": {"roles": []}}}, "Unsupported"),
+        ({"contributors": {"First Author": {"name": " "}}}, "nonempty string"),
+        ({"contributors": {"First Author": {"sections": []}}}, "must be a mapping"),
+        (
+            {"contributors": {"First Author": {"sections": {"Absent": "Corrected section"}}}},
+            "not present",
+        ),
+        (
+            {"contributors": {"First Author": {"sections": {"Original section": "Absent"}}}},
+            "not a project section",
+        ),
+        (
+            {"contributors": {"First Author": {"sections": {"Original section": "Other section"}}}},
+            "would contain duplicates",
+        ),
+        (
+            {"contributors": {"First Author": {"name": "Second Author"}, "Second Author": {}}},
+            "names would contain duplicates",
+        ),
+    ],
+)
+def test_author_review_rejects_invalid_changes(author_review_example, changes, message) -> None:
+    payload, review = author_review_example
+    review.update(changes)
+
+    with pytest.raises(ValueError, match=message):
+        apply_author_review(payload, review, "reviewed-version")
+
+
+def test_author_review_rejects_ambiguous_portal_names(author_review_example) -> None:
+    payload, review = author_review_example
+    payload["contributors"][2]["author"]["name"] = "First Author"
+
+    with pytest.raises(ValueError, match="nonempty and unique"):
+        apply_author_review(payload, review, "reviewed-version")
+
+
 def test_authorship_snapshot_is_portal_backed() -> None:
     authors = (REPO_ROOT / "authors.yml").read_text(encoding="utf-8")
     avatars = json.loads((REPO_ROOT / "author_avatars.json").read_text(encoding="utf-8"))
+    avatar_source = json.loads(
+        (REPO_ROOT / "author_portrait_sources.json").read_text(encoding="utf-8")
+    )
+    assert avatars == avatar_source
 
     commit = re.search(r'^  commit: "([0-9a-f]{32})"$', authors, re.MULTILINE)
     assert commit
     assert 'project: "p3_data_release"' in authors
     assert f"commit={commit.group(1)}&format=json" in authors
-    assert authors.count('\n      name: "') == 19
+    author_ids = re.findall(r'^      id: "([^"]+)"$', authors, re.MULTILINE)
+    assert len(author_ids) == len(set(author_ids))
+    assert authors.count('\n      name: "') == len(author_ids)
+    assert len(author_ids) >= len(avatars["contributors"]) + len(avatars["unresolved"])
     for contributor in (
         "Jérôme Lecoq",
         "Peter A Groblewski",
@@ -229,10 +362,9 @@ def test_authorship_snapshot_is_portal_backed() -> None:
     ):
         assert f'name: "{contributor}"' in authors
     assert avatars["version"] == 1
-    assert len(avatars["contributors"]) == 18
-    assert len(avatars["unresolved"]) == 1
+    assert set(avatars["contributors"]) | set(avatars["unresolved"]) <= set(author_ids)
     assert set(avatars["contributors"]).isdisjoint(avatars["unresolved"])
-    assert authors.count('\n      avatar_url: "https://') == 18
+    assert authors.count('\n      avatar_url: "https://') == len(avatars["contributors"])
     for author_id, record in avatars["contributors"].items():
         assert record["source_page"].startswith("https://")
         assert urllib.parse.urlparse(record["avatar_url"]).netloc in {
@@ -240,9 +372,14 @@ def test_authorship_snapshot_is_portal_backed() -> None:
             "static1.squarespace.com",
             "faculty.eng.ufl.edu",
             "cdn.vanderbilt.edu",
+            "lh7-us.googleusercontent.com",
+            "robertodf.github.io",
+            "faculty-directory.dartmouth.edu",
+            "ido4848.github.io",
+            "profiles.ucl.ac.uk",
         }
-        assert record["width"] >= 400
-        assert record["height"] >= 400
+        assert record["width"] >= 128
+        assert record["height"] >= 128
         author_block = re.search(
             rf'      id: "{re.escape(author_id)}"\n(.*?)(?=\n    -|\Z)',
             authors,
@@ -346,9 +483,9 @@ def test_manuscript_local_assets_and_figure_metadata() -> None:
         assert (REPO_ROOT / relative_path).is_file(), relative_path
 
     figures = re.findall(r":::\{figure\} [^\n]+\n(?P<options>.*?)\n\n", manuscript, re.DOTALL)
-    assert len(figures) == 6
+    assert len(figures) == 7
     assert manuscript.count(":::{figure} ./images/figures/imported/") == 1
-    assert manuscript.count(":::{figure} ./images/figures/generated/") == 5
+    assert manuscript.count(":::{figure} ./images/figures/generated/") == 6
     assert "./images/figures/generated/figure-01-overview.svg" in manuscript
     assert "./images/figures/generated/figure-01-panel-c-cohorts.svg" not in manuscript
     assert ":label: fig-experimental-design" not in manuscript
@@ -368,7 +505,7 @@ def test_manuscript_local_assets_and_figure_metadata() -> None:
     assert "./images/figures/generated/figure-06-segmentation-viewers.svg" in manuscript
     assert "./images/figures/generated/figure-07-unit-extraction-plan.svg" in manuscript
     assert "./images/figures/generated/figure-08-basic-stimuli-plan.svg" in manuscript
-    assert "./images/figures/generated/figure-10-standard-oddball-plan.svg" in manuscript
+    assert "./images/figures/generated/figure-11-standard-oddball-plan.svg" in manuscript
     assert "nine native-resolution images" in manuscript
     hardware_start = manuscript.index("## Multimodal recording hardware")
     methods_start = manuscript.index("# Methods")
@@ -578,7 +715,7 @@ def test_supplementary_studies_table_is_complete() -> None:
 def test_supplementary_and_power_figures_are_current() -> None:
     manuscript = (REPO_ROOT / "index.md").read_text(encoding="utf-8")
 
-    for number in range(1, 6):
+    for number in range(1, 7):
         assert manuscript.count(f"**Supplementary Figure {number}.**") == 1
     assert manuscript.count(":enumerated: false\n:width: 100%") >= 3
     assert "supplementary-neuropixels-implant-trajectories.png" in manuscript
@@ -600,18 +737,17 @@ def test_supplementary_and_power_figures_are_current() -> None:
     assert "100-micrometer mesh derived from the Allen CCF 2017" in manuscript
     assert "**A,** an oblique projection" in manuscript
     assert "trajectories extend laterally toward the L direction marker" in manuscript
-    assert "### Eye tracking across modalities" in manuscript
-    assert manuscript.count("[Supplementary Figure 4](#fig-supp-eye-tracking)") == 1
+    assert manuscript.count("[Supplementary Figure 4](#fig-supp-eye-tracking)") == 2
     assert "./interactive/eye-tracking-viewer.html" in manuscript
     assert ":label: fig-supp-eye-tracking\n:enumerated: false" in manuscript
-    assert "Eye fits, blink flags, and stimulus rows" in manuscript
-    assert "Fit-source tabs switch the center field" in manuscript
-    assert "standard-oddball Neuropixels, mesoscope, and SLAP2 sessions" in manuscript
-    assert "5th–95th percentile nonblink range" in manuscript
+    assert "raw eye-camera video (left)" in manuscript
+    assert "same video with the NWB-packaged pupil" in manuscript
+    assert "The optional **Filtered** view" in manuscript
+    assert "isolated runs of one to four samples" in manuscript
     assert "**B,** a dorsal projection" in manuscript
     assert manuscript.count(
         "[Supplementary Figure 5](#fig-supp-optotagging-heatmaps)"
-    ) == 1
+    ) == 3
     assert "./interactive/optotagging-heatmaps.html" in manuscript
     assert ":label: fig-supp-optotagging-heatmaps\n:enumerated: false" in manuscript
     assert (
@@ -628,6 +764,92 @@ def test_supplementary_and_power_figures_are_current() -> None:
     assert "selectors constrain the view to available values" in manuscript
     assert "gray dots denote individual sessions and teal bars or lines denote means" in manuscript
     assert "include only sessions sampling that area" in manuscript
+    assert "./interactive/pupil-event-responses.html" in manuscript
+    assert ":label: fig-supp-pupil-event-responses\n:enumerated: false" in manuscript
+    assert (
+        ":placeholder: ./images/figures/generated/"
+        "supplementary-pupil-event-responses.svg"
+    ) in manuscript
+    assert "display-synchronized `start_time`" in manuscript
+    assert "row i−2 `stop_time` to row i−1 `start_time`" in manuscript
+    assert "both repeats of standard control C1" in manuscript
+    assert "Duration responses use the following commanded interstimulus interval" in manuscript
+    assert "display-recorded stimulus interval" in manuscript
+    assert "vertically aligned pupil and running panels" in manuscript
+    assert "without any temporal filtering" in manuscript
+    assert "Individual traces show means ±1 SEM across valid trials" in manuscript
+    assert "Population trace bands show ±1 SEM across mice" in manuscript
+    assert "SLAP2 duration pupil responses are marked unavailable" in manuscript
+    assert "Mouse 830846's duration running panel is explicitly unavailable" in manuscript
+    assert "60 Neuropixels sessions from 16 mice" in manuscript
+    assert "86 mesoscope sessions from 10 mice" in manuscript
+    assert "./interactive/neuropixels-event-responses.html" in manuscript
+    assert (
+        ":label: fig-neuropixels-event-responses\n:width: 100%"
+        in manuscript
+    )
+    assert ":label: fig-neuropixels-event-responses\n:enumerated: false" not in manuscript
+    assert (
+        ":placeholder: ./images/figures/generated/"
+        "figure-10-neuropixels-event-responses.svg"
+    ) in manuscript
+    assert "units are distinct across sessions" in manuscript
+    assert "and the same 16 events" in manuscript
+    assert "z-score limits default to ±3" in manuscript
+    assert "Rastermap 1.0 ordering" in manuscript
+    assert "**Area** is the default row order" in manuscript
+    assert "canonical parent area in Allen graph order" in manuscript
+    assert "group and label exact peak-channel CCF locations" in manuscript
+    assert "minimum and maximum depth" in manuscript
+    assert "shared Greys-scale limit computed from both conditions" in manuscript
+    assert "causal exponential spike-density kernel" in manuscript
+    assert "Standard-oddball and sensorimotor windows span −0.75 to 0.75 s" in manuscript
+    assert "duration windows −1.5 to 1.5 s" in manuscript
+    # The sequence window was widened so the Q1 comparison element is visible.
+    assert "sequence windows −2 to 1 s" in manuscript
+    assert "10τ (100 ms) support" in manuscript
+    assert "native 2.5 ms SDF is retained" in manuscript
+    assert "hidden 97.5 ms pre-window" in manuscript
+    assert "without an uncertainty band" in manuscript
+    assert "Dashed guides mark the selected mismatch presentation" in manuscript
+    assert "SST units have a positive 5 Hz optotagging response" in manuscript
+    assert "±1 SEM across neurons" in manuscript
+    assert "**Subtract baseline** control" in manuscript
+    matrix_areas, _matrix_columns = response_matrix(load_neuropixels_event_responses())
+    assert (
+        f"same {len(matrix_areas)} frontal, visual, hippocampal, and thalamic areas"
+        in manuscript
+    )
+    assert "at least 10 tested units in at least eight of the 16 events" in manuscript
+    assert "12,968 sorted units" in manuscript
+    assert "8,093 passed the manuscript QC thresholds" in manuscript
+    # The four sessions come from 830794, not the 830846 the figure first used.
+    # Scoped to the caption: 830846 is a real session listed under data records.
+    figure_caption = manuscript[
+        manuscript.index("Neuropixels mismatch responses by predictive-processing")
+    :]
+    figure_caption = figure_caption[: figure_caption.index("\n:::")]
+    assert "mouse 830794" in figure_caption
+    assert "830846" not in figure_caption
+    assert "sequence-cohort mouse" not in figure_caption
+    assert "Solid teal traces" in figure_caption
+    assert "dashed gray traces" in figure_caption
+    # Disclosures the caption must carry, each recording a real limitation.
+    assert "subsequence of that fixed order, not a re-embedding" in manuscript
+    assert "hatched, not shaded" in manuscript
+    assert "selected on the statistical test rather than on the plotted effect" in manuscript
+    assert "revised upstream in August 2026" in manuscript
+    # Responsiveness is defined in prose, not in the caption.
+    assert "### Defining responsiveness per mismatch event" in manuscript
+    assert "paired Wilcoxon signed-rank test across" in manuscript
+    assert "two-sided Mann-Whitney *U*" in manuscript
+    # The multiple-comparisons basis was re-measured; guard the corrected
+    # numbers so the superseded 7-12x claim cannot return.
+    assert "does a single" in manuscript
+    assert "0.6 to" in manuscript
+    assert "7 to 12 times chance" not in manuscript
+    assert "8 to 13 percent" not in manuscript
+    assert "with the difference in immediate stimulus history" in manuscript
     for obsolete in (
         "segmentation-neuropixels.html",
         "segmentation-mesoscope.html",
@@ -653,19 +875,46 @@ def test_nwb_file_contents_are_in_data_records() -> None:
     assert records_start < nwb_contents < validation_start < glossary_start
 
     records = manuscript[nwb_contents:validation_start]
-    assert "Shared across modalities:" in records
-    assert "Neuropixels NWB files" in records
-    assert "Mesoscope NWB files" in records
-    assert "SLAP2 NWB files" in records
     assert "DANDI:001424" in records
-    assert records.count(":::{tab-item}") == 4
-    assert records.count(
-        "| Question | NWB contents | Representative PyNWB entry point |"
+    assert "./interactive/nwb-file-contents.html" in records
+    assert ":label: nwb-file-contents-viewer" in records
+    assert "native collapsible PyNWB structure" in records
+    assert "The **Static** view" in records
+    assert ":title: Interactive NWB structures and static question tables" in records
+
+
+def test_nwb_file_contents_explorer_uses_pinned_native_snapshots() -> None:
+    viewer = (REPO_ROOT / "interactive" / "nwb-file-contents.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="nwb-file-contents-viewer"' in viewer
+    assert 'data-view="interactive"' in viewer
+    assert 'data-view="static"' in viewer
+    assert viewer.count('data-view-panel="interactive"') == 3
+    assert viewer.count('class="static-section"') == 4
+    assert viewer.count("<table>") == 4
+    assert viewer.count(
+        "<th>Name</th><th>Description</th><th>Format</th><th>NWB Path</th>"
     ) == 4
-    assert "nwbfile.units.to_dataframe()" in records
-    assert 'nwbfile.processing[plane]["dff_timeseries"]' in records
-    assert 'nwbfile.processing["ophys"]["ImageSegmentation"]' in records
-    assert 'nwbfile.processing["ophys"]["Fluorescence_DMD1"]["DMD1_dFF"]' in records
+    assert "<th>Question</th>" not in viewer
+    assert "HDMF location" not in viewer
+    assert 'data-tabs="interactive"' in viewer
+    assert 'data-tabs="static"' not in viewer
+    assert "selectView" in viewer
+    assert "selectModality" in viewer
+    assert "__NWB_FILE_CONTENTS_" not in viewer
+    assert "__NEUROPIXELS_TREE__" not in viewer
+
+    snapshot_dir = REPO_ROOT / "figure_sources" / "data" / "nwb-file-contents"
+    for modality in ("neuropixels", "mesoscope", "slap2"):
+        snapshot = snapshot_dir / f"{modality}.html"
+        assert snapshot.is_file()
+        with snapshot.open(encoding="utf-8") as stream:
+            prefix = stream.read(20_000)
+        assert "container-wrap" in prefix
+        assert "PyNWB 3." in prefix
+        assert "DANDI:001" in prefix
+        assert "<script>" not in prefix
 
 
 def test_segmentation_viewers_are_captioned_and_importer_preserved() -> None:
@@ -723,6 +972,12 @@ def test_segmentation_viewers_are_captioned_and_importer_preserved() -> None:
     assert "DANDI:001424" in importer["SLAP2_RAW_SOURCE"]
     assert importer["SEGMENTATION_VIEWER_BLOCK"].count(":::{iframe}") == 1
     assert ":label: fig-segmentation-viewers" in importer["SEGMENTATION_VIEWER_BLOCK"]
+    behavior_and_neural = importer["render_figure"]("image6.png")
+    assert ":label: fig-behavior-tracking" in behavior_and_neural
+    assert ":label: fig-neuropixels-event-responses" in behavior_and_neural
+    assert behavior_and_neural.index(":label: fig-behavior-tracking") < (
+        behavior_and_neural.index(":label: fig-neuropixels-event-responses")
+    )
 
 
 def test_data_explorer_uses_generated_assets_without_manuscript_data() -> None:
@@ -812,7 +1067,7 @@ def test_figure_captions_and_interactive_placement() -> None:
     assert "[Figure 6](#fig-segmentation-viewers)" in manuscript
     assert "[Figure 7](#fig-unit-extraction-plan) and the modality subsections below" in manuscript
     assert "This analysis and [Figure 8](#fig-basic-stimuli-plan)" in manuscript
-    assert "[Figure 10](#fig-standard-oddball-plan) are planning placeholders" in manuscript
+    assert "[Figure 11](#fig-standard-oddball-plan) are planning placeholders" in manuscript
     assert "./interactive/behavior-viewer.html" in manuscript
     assert ":placeholder: ./images/figures/generated/synchronized-behavior.svg" in manuscript
     assert "Synchronized behavior and running across recording modalities" in manuscript
@@ -835,6 +1090,11 @@ def test_figure_captions_and_interactive_placement() -> None:
     assert "continuous raw\nbehavioral videos" in manuscript
     assert "[Figure 9](#fig-behavior-tracking) show these streams" in manuscript
     assert "[](#fig-behavior-tracking)" not in manuscript
+    assert (
+        manuscript.index(":label: fig-behavior-tracking")
+        < manuscript.index(":label: fig-neuropixels-event-responses")
+        < manuscript.index(":label: fig-standard-oddball-plan")
+    )
     for number, label in (
         (1, "fig-graphical-abstract"),
         (2, "fig-interactive-experimental-design"),
@@ -845,7 +1105,8 @@ def test_figure_captions_and_interactive_placement() -> None:
         (7, "fig-unit-extraction-plan"),
         (8, "fig-basic-stimuli-plan"),
         (9, "fig-behavior-tracking"),
-        (10, "fig-standard-oddball-plan"),
+        (10, "fig-neuropixels-event-responses"),
+        (11, "fig-standard-oddball-plan"),
     ):
         assert f"[Figure {number}](#{label})" in manuscript
     assert re.search(r"\[\]\(#fig-", manuscript) is None
@@ -888,6 +1149,8 @@ def test_custom_layout_widens_article_and_hides_duplicate_sidebar() -> None:
     assert ".hover-card-content:has(.table-hover-source) .hover-document" in stylesheet
     assert "max-height: min(460px, calc(100vh - 2rem))" in stylesheet
     assert "#fig-behavior-tracking" in stylesheet
+    assert "#fig-neuropixels-event-responses" in stylesheet
+    assert "#fig-supp-neuropixels-event-responses" not in stylesheet
     assert "container-type: inline-size" in stylesheet
     assert "max-width: 900px" not in stylesheet
     assert "@container (max-width: 560px)" in stylesheet
@@ -976,3 +1239,48 @@ def test_interactive_figure_has_static_fallback() -> None:
     )
     assert "The **Interactive** view" in manuscript
     assert "control and system-identification stimuli" in manuscript
+
+def test_unit_yield_summary_means_are_order_independent() -> None:
+    """Summary means must not depend on record order.
+
+    Left-to-right accumulation reproduces the rounding drift that dirtied the
+    committed HTML. Do not use built-in sum() for this counterexample: Python
+    3.12 and later use a more accurate floating-point summation algorithm.
+    """
+    import random
+    import statistics
+
+    values = [
+        395.5,
+        387.0,
+        454.1666666666667,
+        315.1666666666667,
+        320.8333333333333,
+        312.8333333333333,
+        350.8333333333333,
+        260.8,
+        276.8333333333333,
+        295.8333333333333,
+        275.3333333333333,
+        297.6666666666667,
+        356.1666666666667,
+        405.6666666666667,
+        375.1666666666667,
+        333.5,
+    ]
+    rng = random.Random(0)
+    naive = set()
+    for _ in range(200):
+        order = rng.sample(values, len(values))
+        total = 0.0
+        for value in order:
+            total += value
+        naive.add(total / len(order))
+    exact = {
+        statistics.mean(order)
+        for order in (rng.sample(values, len(values)) for _ in range(200))
+    }
+    # The bug: naive summation gives more than one answer for one dataset.
+    assert len(naive) > 1
+    assert len(exact) == 1
+    assert exact == {338.33125}
